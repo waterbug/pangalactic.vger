@@ -62,19 +62,19 @@ class RepositoryService(ApplicationSession):
         atexit.register(self.shutdown)
         # always load test users steve, zaphod, buckaroo, whorfin
         if not state.get('test_users_loaded'):
-            orb.log.info('* [pger] loading test users ...')
+            orb.log.info('* [vger] loading test users ...')
             deserialize(orb, create_test_users())
             state['test_users_loaded'] = True
         else:
-            orb.log.info('* [pger] test users already loaded.')
+            orb.log.info('* [vger] test users already loaded.')
         if self.config.extra['test']:
             # check whether test objects have been loaded
             if state.get('test_project_loaded'):
-                orb.log.info('* [pger] H2G2 objects already loaded.')
+                orb.log.info('* [vger] H2G2 objects already loaded.')
             else:
                 if not config.get('default_parms'):
                     config['default_parms'] = gsfc_mel_parms[:]
-                orb.log.info('* [pger] loading H2G2 objects ...')
+                orb.log.info('* [vger] loading H2G2 objects ...')
                 deserialize(orb, create_test_project())
                 hw = orb.search_exact(cname='HardwareProduct', id_ns='test')
                 orb.assign_test_parameters(hw)
@@ -132,10 +132,10 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('  new organization: {}'.format(org_id))
                 deserialize(orb, [content])
 
-    def on_pger_msg(self, msg):
+    def on_vger_msg(self, msg):
         for item in msg.items():
             subject, content = item
-            orb.log.info("* on_pger_msg")
+            orb.log.info("* on_vger_msg")
             orb.log.info("      subject: {}".format(str(subject)))
             if subject == u'deleted':
                 orb.log.info("      content: {}".format(str(content)))
@@ -162,7 +162,7 @@ class RepositoryService(ApplicationSession):
         Returns:
             str:  status message
         """
-        orb.log.info('* pger.delete_object()')
+        orb.log.info('* vger.delete_object()')
         # TODO:  check that user has permission to delete
         obj = orb.get(oid)
         if obj is not None:
@@ -209,9 +209,9 @@ class RepositoryService(ApplicationSession):
             orb.log.info("  subscription to omb.organizationlist failed.")
         try:
             # TODO: include other per-organization channels ...
-            yield self.subscribe(self.on_pger_msg, u'pger.channel.public')
+            yield self.subscribe(self.on_vger_msg, u'vger.channel.public')
         except:
-            orb.log.info("  subscription to pger.deletes failed.")
+            orb.log.info("  subscription to vger.deletes failed.")
 
         def save(serialized_objs, cb_details=None):
             """
@@ -233,7 +233,7 @@ class RepositoryService(ApplicationSession):
                                       ...}
                                       }
             """
-            orb.log.info('[rpc] pger.save() ...')
+            orb.log.info('[rpc] vger.save() ...')
             if not serialized_objs:
                 orb.log.info('  called with nothing; returning.')
                 return {'result': 'success.'}
@@ -264,7 +264,7 @@ class RepositoryService(ApplicationSession):
                 if getattr(mod_obj, 'public', True):
                     orb.log.info('   modified object is public -- ')
                     orb.log.info('   publish "modified" on public channel...')
-                    channel = u'pger.channel.public'
+                    channel = u'vger.channel.public'
                     self.publish(channel, {u'modified': content})
                 else:
                     if orgs:
@@ -276,7 +276,7 @@ class RepositoryService(ApplicationSession):
                         # publish 'modified' message on relevant channels
                         org_id = getattr(org, 'id', '')
                         if org_id:
-                            channel = u'pger.channel.' + unicode(org_id)
+                            channel = u'vger.channel.' + unicode(org_id)
                         orb.log.info('   + on channel: {}'.format(channel))
                         self.publish(channel, {u'modified': content})
                 mod_obj_dts[mod_obj.oid] = str(mod_obj.mod_datetime)
@@ -287,7 +287,7 @@ class RepositoryService(ApplicationSession):
                 if getattr(new_obj, 'public', False):
                     orb.log.info('   new object is public -- ')
                     orb.log.info('   publish "decloaked" on public channel...')
-                    channel = u'pger.channel.public'
+                    channel = u'vger.channel.public'
                     self.publish(channel, {u'decloaked':
                                      [new_obj.oid, new_obj.id,
                                       '', '']})
@@ -305,10 +305,10 @@ class RepositoryService(ApplicationSession):
                     for org in orgs:
                         # publish 'decloaked' message
                         if org.id:
-                            channel = u'pger.channel.' + unicode(
+                            channel = u'vger.channel.' + unicode(
                                                           org.id)
                         else:
-                            channel = u'pger.channel.public'
+                            channel = u'vger.channel.public'
                         orb.log.info('   decloak msg on: {}'.format(
                                                             channel))
                         self.publish(channel, {u'decloaked':
@@ -317,7 +317,7 @@ class RepositoryService(ApplicationSession):
                 new_obj_dts[new_obj.oid] = str(new_obj.mod_datetime)
             return dict(new_obj_dts=new_obj_dts, mod_obj_dts=mod_obj_dts)
 
-        yield self.register(save, u'pger.save',
+        yield self.register(save, u'vger.save',
                             RegisterOptions(details_arg='cb_details'))
 
         def modify(oid, cb_details=None, **kw):
@@ -333,7 +333,7 @@ class RepositoryService(ApplicationSession):
             Returns:
                 success (bool):  True if successful
             """
-            orb.log.info('[rpc] pger.modify() ...')
+            orb.log.info('[rpc] vger.modify() ...')
             # TODO: validation
             obj = orb.get(oid)
             if obj:
@@ -361,7 +361,7 @@ class RepositoryService(ApplicationSession):
                     orgs = set([grant.grantee for grant in grants])
                     content = (obj.oid, obj.id, str(obj.mod_datetime))
                     for org in orgs:
-                        channel = u'pger.channel.' + unicode(getattr(org, 'id',
+                        channel = u'vger.channel.' + unicode(getattr(org, 'id',
                                                                      'public'))
                         self.publish(channel, {u'modified': content})
                     return content
@@ -372,7 +372,7 @@ class RepositoryService(ApplicationSession):
                 # return error: obj not found
                 return False
 
-        yield self.register(modify, u'pger.modify',
+        yield self.register(modify, u'vger.modify',
                             RegisterOptions(details_arg='cb_details'))
 
         def decloak(obj_oid, actor_oid, cb_details=None):
@@ -406,7 +406,7 @@ class RepositoryService(ApplicationSession):
             # TODO:
             #   - authorization:  is user permitted to decloak the objs
             #                     i.e. is user the creator (or admin?)
-            orb.log.info('[rpc] pger.decloak() ...')
+            orb.log.info('[rpc] vger.decloak() ...')
             orb.log.info('      object oid: {}'.format(str(obj_oid)))
             orb.log.info('      actor oid:  {}'.format(str(actor_oid)))
             userid = getattr(cb_details, 'caller_authid', None)
@@ -425,7 +425,7 @@ class RepositoryService(ApplicationSession):
                         msg = 'object is not a Managed Object; not cloakable'
                         return actors, msg, obj_oid
                     if obj.public:
-                        channel = u'pger.channel.public'
+                        channel = u'vger.channel.public'
                         self.publish(channel, {u'decloaked':
                                      [obj.oid, obj.id, '', '']})
                         msg = 'object is public; not cloakable'
@@ -459,7 +459,7 @@ class RepositoryService(ApplicationSession):
                                           create_datetime=dts,
                                           mod_datetime=dts)
                         orb.save([oa])
-                        channel = u'pger.channel.' + unicode(
+                        channel = u'vger.channel.' + unicode(
                                         getattr(actor, 'id', 'public'))
                         self.publish(channel, {u'decloaked':
                                      [obj.oid, obj.id, actor.oid, actor.id]})
@@ -472,7 +472,7 @@ class RepositoryService(ApplicationSession):
                 msg = 'request did not reference an object'
             return actors, msg, obj_oid
 
-        yield self.register(decloak, u'pger.decloak',
+        yield self.register(decloak, u'vger.decloak',
                             RegisterOptions(details_arg='cb_details'))
 
         def get_cloaking_status(obj_oid, cb_details=None):
@@ -491,7 +491,7 @@ class RepositoryService(ApplicationSession):
                 (2) a message (empty if successful)
                 (3) the submitted object oid
             """
-            orb.log.info('[rpc] pger.get_cloaking_status() ...')
+            orb.log.info('[rpc] vger.get_cloaking_status() ...')
             orb.log.info('  - object oid: {}'.format(str(obj_oid)))
             actors = []
             msg = ''
@@ -518,7 +518,7 @@ class RepositoryService(ApplicationSession):
                 msg = 'no oid'
             return actors, msg, obj_oid
 
-        yield self.register(get_cloaking_status, u'pger.get_cloaking_status',
+        yield self.register(get_cloaking_status, u'vger.get_cloaking_status',
                             RegisterOptions(details_arg='cb_details'))
 
         def sync_parameter_definitions(data, cb_details=None):
@@ -538,7 +538,7 @@ class RepositoryService(ApplicationSession):
                     [2]:  oids of server objects with earlier mod_datetime(s)
                     [3]:  any oids in data that were not found on the server
             """
-            orb.log.info('[rpc] pger.sync_parameter_definitions() ...')
+            orb.log.info('[rpc] vger.sync_parameter_definitions() ...')
             orb.log.info('   data: {}'.format(str(data)))
             pd_dts = orb.get_mod_dts('ParameterDefinition')
             server_pd_dts = {oid : dts for oid, dts in pd_dts.items()
@@ -577,7 +577,7 @@ class RepositoryService(ApplicationSession):
                         [], [], []]
 
         yield self.register(sync_parameter_definitions,
-                            u'pger.sync_parameter_definitions',
+                            u'vger.sync_parameter_definitions',
                             RegisterOptions(details_arg='cb_details'))
 
         def sync_objects(data, cb_details=None):
@@ -597,7 +597,7 @@ class RepositoryService(ApplicationSession):
                     [2]:  oids of server objects with earlier mod_datetime(s)
                     [3]:  any oids in data that were not found on the server
             """
-            orb.log.info('[rpc] pger.sync_objects()')
+            orb.log.info('[rpc] vger.sync_objects()')
             if not data:
                 orb.log.info('  no data sent; returning empty.')
                 return [[], [], [], []]
@@ -635,7 +635,7 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('   result: {}'.format(str(result)))
                 return result
 
-        yield self.register(sync_objects, u'pger.sync_objects',
+        yield self.register(sync_objects, u'vger.sync_objects',
                             RegisterOptions(details_arg='cb_details'))
 
         def sync_library_objects(data, cb_details=None):
@@ -665,7 +665,7 @@ class RepositoryService(ApplicationSession):
                           [a] not created by the user or
                           [b] created by the user but are in 'trash'.
             """
-            orb.log.info('[rpc] pger.sync_library_objects()')
+            orb.log.info('[rpc] vger.sync_library_objects()')
             orb.log.info('  data: {}'.format(str(data)))
 
             # TODO: user object will be needed when more than "public" objects
@@ -728,7 +728,7 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('   result: {}'.format(str(result)))
                 return result
 
-        yield self.register(sync_library_objects, u'pger.sync_library_objects',
+        yield self.register(sync_library_objects, u'vger.sync_library_objects',
                             RegisterOptions(details_arg='cb_details'))
 
         def sync_project(project_oid, data, cb_details=None):
@@ -748,7 +748,7 @@ class RepositoryService(ApplicationSession):
                     [2]:  oids of server objects with earlier mod_datetime(s)
                     [3]:  any oids in data that were not found on the server
             """
-            orb.log.info('[rpc] pger.sync_project() ...')
+            orb.log.info('[rpc] vger.sync_project() ...')
             orb.log.info('   project oid: {}'.format(str(project_oid)))
             orb.log.info('   data: {}'.format(str(data)))
             if not project_oid or project_oid == 'pgefobjects:SANDBOX':
@@ -794,7 +794,7 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('   ** project not found on server **')
                 return [[], [], [], []]
 
-        yield self.register(sync_project, u'pger.sync_project',
+        yield self.register(sync_project, u'vger.sync_project',
                             RegisterOptions(details_arg='cb_details'))
 
         def search_exact(**kw):
@@ -811,10 +811,10 @@ class RepositoryService(ApplicationSession):
             Returns:
                 list:  oids of the instances
             """
-            orb.log.info('[rpc] pger.search_exact() ...')
+            orb.log.info('[rpc] vger.search_exact() ...')
             return [o.oid for o in orb.search_exact(**kw)]
 
-        yield self.register(search_exact, u'pger.search_exact')
+        yield self.register(search_exact, u'vger.search_exact')
 
         def get_version():
             """
@@ -824,11 +824,11 @@ class RepositoryService(ApplicationSession):
             Returns:
                 tuple:  version (str), schema_change (bool)
             """
-            orb.log.info('[rpc] pger.get_version() ...')
+            orb.log.info('[rpc] vger.get_version() ...')
             schema_change = bool(__version__ in schema_maps)
             return __version__, schema_change
 
-        yield self.register(get_version, u'pger.get_version')
+        yield self.register(get_version, u'vger.get_version')
 
         def get_object(oid, include_components=False, cb_details=None):
             """
@@ -848,7 +848,7 @@ class RepositoryService(ApplicationSession):
                     this will be a list that may include related objects. If no
                     object is found, returns an empty list
             """
-            orb.log.info('[rpc] pger.get_object({}) ...'.format(oid))
+            orb.log.info('[rpc] vger.get_object({}) ...'.format(oid))
             # TODO: determine authorization for user
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
@@ -862,7 +862,7 @@ class RepositoryService(ApplicationSession):
             else:
                 return []
 
-        yield self.register(get_object, u'pger.get_object',
+        yield self.register(get_object, u'vger.get_object',
                             RegisterOptions(details_arg='cb_details'))
 
         def get_mod_dts(cname=None, oids=None):
@@ -877,10 +877,10 @@ class RepositoryService(ApplicationSession):
             Returns:
                 dict:  A dict mapping oids to 'mod_datetime' strings.
             """
-            orb.log.info('[rpc] pger.get_mod_dts() ...')
+            orb.log.info('[rpc] vger.get_mod_dts() ...')
             return orb.get_mod_dts(cname=cname, oids=oids)
 
-        yield self.register(get_object, u'pger.get_mod_dts')
+        yield self.register(get_object, u'vger.get_mod_dts')
 
         def get_role_assignments(userid, no_filter=False):
             """
@@ -892,7 +892,7 @@ class RepositoryService(ApplicationSession):
             Returns:
                 role_assignments:  Instances of RoleAssignment
             """
-            orb.log.info('[rpc] pger.get_role_assignments({}) ...'.format(userid))
+            orb.log.info('[rpc] vger.get_role_assignments({}) ...'.format(userid))
             user = orb.select('Person', id=userid)
             if user:
                 ras = orb.search_exact(cname='RoleAssignment',
@@ -932,7 +932,7 @@ class RepositoryService(ApplicationSession):
             else:
                 return {}
 
-        yield self.register(get_role_assignments, u'pger.get_role_assignments')
+        yield self.register(get_role_assignments, u'vger.get_role_assignments')
 
         def get_user_object(userid):
             """
@@ -944,10 +944,10 @@ class RepositoryService(ApplicationSession):
             Returns:
                 role_assignments:  instances of RoleAssignment
             """
-            orb.log.info('[rpc] pger.get_user_object()')
+            orb.log.info('[rpc] vger.get_user_object()')
             return serialize(orb, [orb.select('Person', id=userid)])[0]
 
-        yield self.register(get_user_object, u'pger.get_user_object')
+        yield self.register(get_user_object, u'vger.get_user_object')
 
         def get_thing_modeled(oid, cb_details=None):
             """
@@ -965,7 +965,7 @@ class RepositoryService(ApplicationSession):
             else:
                 return None
 
-        yield self.register(get_thing_modeled, u'pger.get_thing_modeled',
+        yield self.register(get_thing_modeled, u'vger.get_thing_modeled',
                             RegisterOptions(details_arg='cb_details'))
 
         ###### json procedures: call the rpc and json.dump the output
@@ -977,7 +977,7 @@ class RepositoryService(ApplicationSession):
             """
             objs = search_exact(**kw)
             return json.dumps(objs).decode('utf-8')
-        yield self.register(json_search_exact, u'pger.json_search_exact')
+        yield self.register(json_search_exact, u'vger.json_search_exact')
 
         def json_get_object(oid):
             """
@@ -986,7 +986,7 @@ class RepositoryService(ApplicationSession):
             # returns a list containing one serialized object or None
             res = get_object(oid)
             return json.dumps(res).decode('utf-8')
-        yield self.register(json_get_object, u'pger.json_get_object')
+        yield self.register(json_get_object, u'vger.json_get_object')
 
         def json_delete(oid):
             """
@@ -998,7 +998,7 @@ class RepositoryService(ApplicationSession):
                 return json.dumps(True)
             except:
                 return json.dumps(False)
-        yield self.register(json_delete, u'pger.json_delete')
+        yield self.register(json_delete, u'vger.json_delete')
 
         def json_get_thing_modeled(oid):
             """
@@ -1007,7 +1007,7 @@ class RepositoryService(ApplicationSession):
             obj = get_thing_modeled(oid)
             # the slice removes quotes added by json
             return json.dumps(obj).decode('utf-8')[1:-1]
-        yield self.register(json_get_thing_modeled, u'pger.json_get_thing_modeled')
+        yield self.register(json_get_thing_modeled, u'vger.json_get_thing_modeled')
 
         # end of backend setup
         # print("procedures registered")

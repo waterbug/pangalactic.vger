@@ -1,6 +1,6 @@
 """
 Authentication "worker" module for the crossbar server, implementing
-authentication for use with the 'test_pger' testing module.
+authentication for use with the 'test_vger' testing module.
 """
 import bcrypt
 import fileinput
