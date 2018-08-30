@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 """
 The Pan Galactic Entropy Reverser
@@ -92,13 +93,8 @@ class RepositoryService(ApplicationSession):
 
     def onConnect(self):
         realm = self.config.realm
-        # print("* realm set to: '%s'" % str(realm))
         orb.log.info("* realm set to: '%s'" % str(realm))
         authid = self.config.extra[u'authid']
-        # print("* authid set to: '%s'" % str(authid))
-        # print("* RepositoryService connected.")
-        # print("  - joining realm <{}> under authid <{}>".format(
-                                # realm if realm else 'not provided', authid))
         orb.log.info("* authid set to: '%s'" % str(authid))
         orb.log.info("* RepositoryService connected.")
         orb.log.info("  - joining realm <{}> under authid <{}>".format(
@@ -106,7 +102,6 @@ class RepositoryService(ApplicationSession):
         self.join(realm, [u'ticket'], authid)
 
     def onChallenge(self, challenge):
-        # print("* RepositoryService challenge received: {}".format(challenge))
         orb.log.info("* RepositoryService challenge received: {}".format(
                                                                     challenge))
         if challenge.method == u'ticket':
@@ -173,7 +168,6 @@ class RepositoryService(ApplicationSession):
 
     @inlineCallbacks
     def onJoin(self, details):
-        # print("session attached")
         orb.log.info("* session attached")
         orb.log.info("  getting persons, projects, and role assignments ...")
         orb.log.info("  [calling omb.state.query()]")
@@ -1010,9 +1004,7 @@ class RepositoryService(ApplicationSession):
         yield self.register(json_get_thing_modeled, u'vger.json_get_thing_modeled')
 
         # end of backend setup
-        # print("procedures registered")
         orb.log.info("procedures registered")
-
 
 if __name__ == '__main__':
 
@@ -1027,9 +1019,8 @@ if __name__ == '__main__':
                         default=u'',
                         help='The db connection url (used by orb)')
     parser.add_argument('--realm', dest='realm', type=six.text_type,
-                        default=u'services',
-                        help='The realm to join. If not provided, let the '
-                        'router auto-choose the realm (default).')
+                        default=u'pangalactic-services',
+                        help='The realm to join.'
     parser.add_argument('--host', dest='host', type=six.text_type,
                         default='localhost',
                         help='The router host [default: localhost].')
@@ -1066,9 +1057,14 @@ if __name__ == '__main__':
         'test': options.test
     }
     url = unicode('wss://{}:{}/ws'.format(options.host, options.port))
-    print("Connecting to '{}' : realm='{}', authid='{}'".format(url,
-                                                         options.realm,
-                                                         options.authid))
+    print("vger starting with".format(url))
+    print("   home directory:  '{}'".format(options.home))
+    print("   connectiing to crossbar at:  '{}'".format(url))
+    print("       realm:  '{}'".format(options.realm))
+    print("       authid: '{}'".format(options.authid))
+    print("   db url: '{}'".format(options.db))
+    print("   test: '{}'".format(str(options.test)))
+    print("   debug: '{}'".format(str(options.debug)))
     runner = ApplicationRunner(url=url, realm=options.realm, ssl=tls_options,
                                extra=extra)
     runner.run(RepositoryService, auto_reconnect=True)
