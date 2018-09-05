@@ -17,7 +17,8 @@ from autobahn.twisted.wamp import ApplicationSession
 from autobahn.wamp.types import RegisterOptions
 
 from pangalactic.core                  import __version__
-from pangalactic.core                  import config, state, write_state
+from pangalactic.core                  import (config, state, read_config,
+                                               write_config, write_state)
 from pangalactic.core.utils.meta       import uncook_datetime
 from pangalactic.core.access           import get_orgs_with_access
 # from pangalactic.core.access           import get_perms
@@ -54,7 +55,8 @@ class RepositoryService(ApplicationSession):
     def __init__(self, *args, **kw):
         """
         NOTE:  orb home directory and database connection url must be specified
-        at startup, via the 'config.extra' dict.
+        by the ApplicationRunner, which sets the 'self.config.extra' dict from
+        its 'extra' keyword arg.
         """
         super(RepositoryService, self).__init__(*args, **kw)
         orb.start(home=self.config.extra[u'home'], gui=False,
@@ -92,6 +94,7 @@ class RepositoryService(ApplicationSession):
         orb.dump_db()
 
     def onConnect(self):
+        # self.config is set up by ApplicationRunner when it "runs" the session
         realm = self.config.realm
         orb.log.info("* realm set to: '%s'" % str(realm))
         authid = self.config.extra[u'authid']
@@ -1008,28 +1011,21 @@ class RepositoryService(ApplicationSession):
 
 if __name__ == '__main__':
 
+    home_help = 'home directory (used by orb) [default: current directory]'
+    cert_help = 'crossbar host cert file [default: server_cert.pem].'
     parser = argparse.ArgumentParser()
     parser.add_argument('--authid', dest='authid', type=six.text_type,
-                        default=u'service2',
-                        help='The authid to connect under (required)')
+                        help='id to connect as (required)')
     parser.add_argument('--home', dest='home', type=six.text_type,
-                        default=u'',
-                        help='The home directory (used by orb)')
-    parser.add_argument('--db', dest='db', type=six.text_type,
-                        default=u'',
-                        help='The db connection url (used by orb)')
-    parser.add_argument('--realm', dest='realm', type=six.text_type,
-                        default=u'pangalactic-services',
-                        help='The realm to join.'
+                        help=home_help)
+    parser.add_argument('--db_url', dest='db_url', type=six.text_type,
+                        help='db connection url (used by orb)')
     parser.add_argument('--host', dest='host', type=six.text_type,
-                        default='localhost',
-                        help='The router host [default: localhost].')
+                        help='crossbar host [default: localhost].')
     parser.add_argument('--port', dest='port', type=six.text_type,
-                        default='8080',
-                        help='The router port [default: 8080].')
+                        help='crossbar port [default: 8080].')
     parser.add_argument('--cert', dest='cert', type=six.text_type,
-                        default='server_cert.pem',
-                        help='The server cert [default: server_cert.pem].')
+                        default='server_cert.pem', help=cert_help)
     parser.add_argument('-d', '--debug', dest='debug', action='store_true',
                         help='Set logging level to DEBUG')
     parser.add_argument('-t', '--test', dest='test', action='store_true',
@@ -1049,23 +1045,45 @@ if __name__ == '__main__':
                                    six.u(open(cert_fname, 'r').read()))
     tls_options = CertificateOptions(
                         trustRoot=OpenSSLCertificateAuthorities([cert]))
+    # command options override config settings; if neither, defaults are used
+    home = options.home or ''
+    read_config(os.path.join(home, 'config'))
+    authid = options.authid or config.get('authid', u'service2')
+    # unix domain socket connection to db:  socket located in home dir
+    domain_socket = home + '/vgerdb_socket'
+    db_url = options.db_url or config.get('db_url',
+                u'postgresql://scred@:5432/vgerdb?host={}'.format(domain_socket))
+    test = options.test or config.get('test', False)
+    debug = options.debug or config.get('debug', False)
     extra = {
-        u'authid': options.authid,
-        u'home': options.home,
-        u'db_url': options.db,
-        'debug': options.debug,
-        'test': options.test
-    }
-    url = unicode('wss://{}:{}/ws'.format(options.host, options.port))
+        u'authid': authid,
+        u'home': home,
+        u'db_url': db_url,
+        'debug': debug,
+        'test': test
+        }
+    host = options.host or config.get('host', 'localhost')
+    port = options.port or config.get('port', '8080')
+    url = unicode('wss://{}:{}/ws'.format(host, port))
+    # realm is always "pangalactic-services" ...
+    realm = u'pangalactic-services'
+    # write the new config file
+    config['authid'] = authid
+    config['db_url'] = db_url
+    config['debug'] = debug
+    config['test'] = test
+    config['host'] = host
+    config['port'] = port
+    write_config(os.path.join(home, 'config'))
     print("vger starting with".format(url))
-    print("   home directory:  '{}'".format(options.home))
+    print("   home directory:  '{}'".format(home))
     print("   connectiing to crossbar at:  '{}'".format(url))
-    print("       realm:  '{}'".format(options.realm))
+    print("       realm:  '{}'".format(realm))
     print("       authid: '{}'".format(options.authid))
-    print("   db url: '{}'".format(options.db))
-    print("   test: '{}'".format(str(options.test)))
-    print("   debug: '{}'".format(str(options.debug)))
-    runner = ApplicationRunner(url=url, realm=options.realm, ssl=tls_options,
+    print("   db url: '{}'".format(options.db_url))
+    print("   test: '{}'".format(str(test)))
+    print("   debug: '{}'".format(str(debug)))
+    runner = ApplicationRunner(url=url, realm=realm, ssl=tls_options,
                                extra=extra)
     runner.run(RepositoryService, auto_reconnect=True)
 
