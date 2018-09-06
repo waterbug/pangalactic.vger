@@ -1038,6 +1038,8 @@ if __name__ == '__main__':
     home = options.home or ''
     read_config(os.path.join(home, 'config'))
     authid = options.authid or config.get('authid', u'service2')
+    if type(authid) is not unicode:
+        authid = unicode(authid, 'utf-8')
     # unix domain socket connection to db:  socket located in home dir
     domain_socket = home + '/vgerdb_socket'
     db_url = options.db_url or config.get('db_url',
@@ -1068,13 +1070,13 @@ if __name__ == '__main__':
     print("   home directory:  '{}'".format(home))
     print("   connectiing to crossbar at:  '{}'".format(url))
     print("       realm:  '{}'".format(realm))
-    print("       authid: '{}'".format(options.authid))
+    print("       authid: '{}'".format(authid))
     print("   db url: '{}'".format(options.db_url))
     print("   test: '{}'".format(str(test)))
     print("   debug: '{}'".format(str(debug)))
     if authid not in TICKETS:
         print("Given authid <{}> is not in my tickets database!".format(
-                                                            options.authid))
+                                                                    authid))
         sys.exit(1)
     # load self-signed server certificate (default: 'server_cert.pem' file in
     # current directory)
