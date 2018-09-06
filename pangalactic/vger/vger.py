@@ -1034,17 +1034,6 @@ if __name__ == '__main__':
 
     from autobahn.twisted.wamp import ApplicationRunner
 
-    if options.authid not in TICKETS:
-        print("Given authid <{}> is not in my tickets database!".format(
-                                                            options.authid))
-        sys.exit(1)
-    # load self-signed server certificate (default: 'server_cert.pem' file in
-    # current directory)
-    cert_fname = options.cert
-    cert = crypto.load_certificate(crypto.FILETYPE_PEM,
-                                   six.u(open(cert_fname, 'r').read()))
-    tls_options = CertificateOptions(
-                        trustRoot=OpenSSLCertificateAuthorities([cert]))
     # command options override config settings; if neither, defaults are used
     home = options.home or ''
     read_config(os.path.join(home, 'config'))
@@ -1083,6 +1072,17 @@ if __name__ == '__main__':
     print("   db url: '{}'".format(options.db_url))
     print("   test: '{}'".format(str(test)))
     print("   debug: '{}'".format(str(debug)))
+    if authid not in TICKETS:
+        print("Given authid <{}> is not in my tickets database!".format(
+                                                            options.authid))
+        sys.exit(1)
+    # load self-signed server certificate (default: 'server_cert.pem' file in
+    # current directory)
+    cert_fname = options.cert
+    cert = crypto.load_certificate(crypto.FILETYPE_PEM,
+                                   six.u(open(cert_fname, 'r').read()))
+    tls_options = CertificateOptions(
+                        trustRoot=OpenSSLCertificateAuthorities([cert]))
     runner = ApplicationRunner(url=url, realm=realm, ssl=tls_options,
                                extra=extra)
     runner.run(RepositoryService, auto_reconnect=True)
