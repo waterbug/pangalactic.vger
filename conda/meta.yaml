@@ -1,0 +1,27 @@
+package:
+  name: pangalactic.vger
+  version: "0.1.dev92"
+
+source:
+        path: /home/waterbug/gitlab/pangalactic.vger
+
+requirements:
+  build:
+    - python
+    - setuptools
+
+  run:
+    - pangalactic.core=0.1.dev92
+    - autobahn
+    - pyopenssl
+    - python >=2.7
+    - service_identity
+    - twisted
+    - zope
+    - zope.interface
+
+about:
+  # home: https://pangalactic.us
+  license: NASA
+  # license_file: LICENSE
+
