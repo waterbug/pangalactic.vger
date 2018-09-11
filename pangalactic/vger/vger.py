@@ -75,6 +75,7 @@ class RepositoryService(ApplicationSession):
             if state.get('test_project_loaded'):
                 orb.log.info('* [vger] H2G2 objects already loaded.')
             else:
+                # set default parms for create_test_project
                 if not config.get('default_parms'):
                     config['default_parms'] = gsfc_mel_parms[:]
                 orb.log.info('* [vger] loading H2G2 objects ...')
@@ -86,10 +87,11 @@ class RepositoryService(ApplicationSession):
 
     def shutdown(self):
         """
-        When the server is killed, serialize the database contents to a yaml
-        file (db.yaml) in the `vault` directory.  If the server is updated and
-        the update includes a schema change, the orb will read, convert, and
-        import this data into a new database when the server is started.
+        When the server is killed, serialize the database contents to a json or
+        yaml file (db.json|yaml) in the `vault` directory.  If the server is
+        updated and the update includes a schema change, the orb will read,
+        convert, and import this data into a new database when the server is
+        restarted.
         """
         orb.dump_db()
 
