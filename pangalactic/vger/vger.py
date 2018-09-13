@@ -1022,9 +1022,9 @@ if __name__ == '__main__':
                         help=home_help)
     parser.add_argument('--db_url', dest='db_url', type=six.text_type,
                         help='db connection url (used by orb)')
-    parser.add_argument('--host', dest='host', type=six.text_type,
+    parser.add_argument('--cb_host', dest='cb_host', type=six.text_type,
                         help='crossbar host [default: localhost].')
-    parser.add_argument('--port', dest='port', type=six.text_type,
+    parser.add_argument('--cb_port', dest='cb_port', type=six.text_type,
                         help='crossbar port [default: 8080].')
     parser.add_argument('--cert', dest='cert', type=six.text_type,
                         default='server_cert.pem', help=cert_help)
@@ -1055,9 +1055,9 @@ if __name__ == '__main__':
         'debug': debug,
         'test': test
         }
-    host = options.host or config.get('host', 'localhost')
-    port = options.port or config.get('port', '8080')
-    url = unicode('wss://{}:{}/ws'.format(host, port))
+    cb_host = options.cb_host or config.get('cb_host', 'localhost')
+    cb_port = options.cb_port or config.get('cb_port', '8080')
+    cb_url = unicode('wss://{}:{}/ws'.format(cb_host, cb_port))
     # realm is always "pangalactic-services" ...
     realm = u'pangalactic-services'
     # write the new config file
@@ -1065,12 +1065,12 @@ if __name__ == '__main__':
     config['db_url'] = db_url
     config['debug'] = debug
     config['test'] = test
-    config['host'] = host
-    config['port'] = port
+    config['cb_host'] = cb_host
+    config['cb_port'] = cb_port
     write_config(os.path.join(home, 'config'))
-    print("vger starting with".format(url))
+    print("vger starting with")
     print("   home directory:  '{}'".format(home))
-    print("   connectiing to crossbar at:  '{}'".format(url))
+    print("   connecting to crossbar at:  '{}'".format(cb_url))
     print("       realm:  '{}'".format(realm))
     print("       authid: '{}'".format(authid))
     print("   db url: '{}'".format(options.db_url))
@@ -1080,14 +1080,14 @@ if __name__ == '__main__':
         print("Given authid <{}> is not in my tickets database!".format(
                                                                     authid))
         sys.exit(1)
-    # load self-signed server certificate (default: 'server_cert.pem' file in
+    # load crossbar host certificate (default: file 'server_cert.pem' in
     # current directory)
     cert_fname = options.cert
-    cert = crypto.load_certificate(crypto.FILETYPE_PEM,
-                                   six.u(open(cert_fname, 'r').read()))
+    cert_content = crypto.load_certificate(crypto.FILETYPE_PEM,
+                                           six.u(open(cert_fname, 'r').read()))
     tls_options = CertificateOptions(
-                        trustRoot=OpenSSLCertificateAuthorities([cert]))
-    runner = ApplicationRunner(url=url, realm=realm, ssl=tls_options,
+                    trustRoot=OpenSSLCertificateAuthorities([cert_content]))
+    runner = ApplicationRunner(url=cb_url, realm=realm, ssl=tls_options,
                                extra=extra)
     runner.run(RepositoryService, auto_reconnect=True)
 
