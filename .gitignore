@@ -28,4 +28,6 @@ pangalaxian/*
 pangalactic/test/pangalaxian_test
 *.pickle
 sedscr
+server_key.pem
+server_cert.pem
 _trial_temp

@@ -1058,20 +1058,20 @@ if __name__ == '__main__':
     cb_host = options.cb_host or config.get('cb_host', 'localhost')
     cb_port = options.cb_port or config.get('cb_port', '8080')
     cb_url = unicode('wss://{}:{}/ws'.format(cb_host, cb_port))
-    # realm is always "pangalactic-services" ...
-    realm = u'pangalactic-services'
-    # write the new config file
+    # router can auto-choose the realm, so not necessary to specify
+    realm = None
     config['authid'] = authid
     config['db_url'] = db_url
     config['debug'] = debug
     config['test'] = test
     config['cb_host'] = cb_host
     config['cb_port'] = cb_port
+    # write the new config file
     write_config(os.path.join(home, 'config'))
     print("vger starting with")
     print("   home directory:  '{}'".format(home))
     print("   connecting to crossbar at:  '{}'".format(cb_url))
-    print("       realm:  '{}'".format(realm))
+    print("       realm:  '{}'".format(realm or "not specified (auto-choose)"))
     print("       authid: '{}'".format(authid))
     print("   db url: '{}'".format(options.db_url))
     print("   test: '{}'".format(str(test)))
@@ -1081,10 +1081,10 @@ if __name__ == '__main__':
                                                                     authid))
         sys.exit(1)
     # load crossbar host certificate (default: file 'server_cert.pem' in
-    # current directory)
-    cert_fname = options.cert
+    # home directory)
+    cert_fpath = os.path.join(home, options.cert)
     cert_content = crypto.load_certificate(crypto.FILETYPE_PEM,
-                                           six.u(open(cert_fname, 'r').read()))
+                                           six.u(open(cert_fpath, 'r').read()))
     tls_options = CertificateOptions(
                     trustRoot=OpenSSLCertificateAuthorities([cert_content]))
     runner = ApplicationRunner(url=cb_url, realm=realm, ssl=tls_options,
