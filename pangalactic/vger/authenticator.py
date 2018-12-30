@@ -2,6 +2,7 @@
 Authentication "worker" module for the crossbar server, implementing
 authentication for use with the 'test_vger' testing module.
 """
+from __future__ import print_function
 from pprint import pprint
 
 from twisted.internet.defer import inlineCallbacks

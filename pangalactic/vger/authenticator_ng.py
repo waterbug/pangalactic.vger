@@ -2,6 +2,7 @@
 Authentication "worker" module for the crossbar server, implementing
 authentication for use with the 'test_vger' testing module.
 """
+from __future__ import print_function
 import bcrypt
 import fileinput
 import os
@@ -204,7 +205,7 @@ class AuthenticatorSession(ApplicationSession):
                 if realm and realm not in principal[u'realm_role']:
                     raise ApplicationError(u'com.example_invalid_realm',
                             "user {} should join {}, not {}".format(authid,
-                                                principal[u'realm_role'].keys(), realm))
+                                                list(principal[u'realm_role'].keys()), realm))
                 if realm is None:
                     realm = u'services'
                 res = {
