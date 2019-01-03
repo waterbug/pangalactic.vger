@@ -127,7 +127,7 @@ class RepositoryService(ApplicationSession):
         if not msg:
             orb.log.info("  msg was empty.")
             return
-        for item in list(msg.items()):
+        for item in msg.items():
             subject, content = item
             if subject == u'organization':
                 org_id = content.get(u'id')
@@ -135,7 +135,7 @@ class RepositoryService(ApplicationSession):
                 deserialize(orb, [content])
 
     def on_vger_msg(self, msg):
-        for item in list(msg.items()):
+        for item in msg.items():
             subject, content = item
             orb.log.info("* on_vger_msg")
             orb.log.info("      subject: {}".format(str(subject)))
@@ -346,7 +346,7 @@ class RepositoryService(ApplicationSession):
                         # for parameters not being properties
                         # ******** WORK IN PROGRESS ***************************
                         kw.pop('parameters')
-                    for a, val in list(kw.items()):
+                    for a, val in kw.items():
                         # TODO: return error for kw args not in fields
                         if a in schema['fields']:
                             setattr(obj, a, val)
@@ -542,7 +542,7 @@ class RepositoryService(ApplicationSession):
             orb.log.info('[rpc] vger.sync_parameter_definitions() ...')
             orb.log.info('   data: {}'.format(str(data)))
             pd_dts = orb.get_mod_dts('ParameterDefinition')
-            server_pd_dts = {oid : dts for oid, dts in list(pd_dts.items())
+            server_pd_dts = {oid : dts for oid, dts in pd_dts.items()
                              if oid not in ref_pd_oids}
             if data:
                 unknown_oids = []
@@ -554,7 +554,7 @@ class RepositoryService(ApplicationSession):
                 same_dts = []
                 # all server pd dts that are not the same as those in data
                 not_same_dts = {}
-                for oid, dts_str in list(server_pd_dts.items()):
+                for oid, dts_str in server_pd_dts.items():
                     # NOTE:  may need to convert strings to datetimes
                     if str(dts_str) == str(data.get(oid)):
                         same_dts.append(oid)
@@ -608,22 +608,22 @@ class RepositoryService(ApplicationSession):
             for oid in unknown_oids:
                 del data[oid]
             dts_by_oid = {oid: uncook_datetime(dt_str)
-                          for oid, dt_str in list(data.items())}
+                          for oid, dt_str in data.items()}
             server_dts = {oid: uncook_datetime(dt_str) for oid, dt_str
-                          in list(orb.get_mod_dts(oids=list(data)).items())}
+                          in orb.get_mod_dts(oids=list(data)).items()}
             # oids of newer objects on the server
             newer_oids = []
-            for server_oid, server_dt in list(server_dts.items()):
+            for server_oid, server_dt in server_dts.items():
                 client_dt = dts_by_oid.get(server_oid)
                 if client_dt and client_dt < server_dt:
                     newer_oids.append(server_oid)
             for oid in newer_oids:
                 del dts_by_oid[oid]
             # oids of server objects with same mod_datetime as submitted oids
-            same_oids = [oid for oid, dt in list(dts_by_oid.items())
+            same_oids = [oid for oid, dt in dts_by_oid.items()
                          if dt == server_dts.get(oid)]
             # oids of older objects on the server
-            older_oids = [oid for oid, dt in list(dts_by_oid.items())
+            older_oids = [oid for oid, dt in dts_by_oid.items()
                           if server_dts.get(oid) and dt > server_dts.get(oid)]
             if newer_oids:
                 newer_sobjs = serialize(orb, orb.get(oids=newer_oids),
@@ -687,7 +687,7 @@ class RepositoryService(ApplicationSession):
                 del data[oid]
             # submitted data:  mod_datetimes by oid
             dts_by_oid = {oid: uncook_datetime(dt_str)
-                          for oid, dt_str in list(data.items())}
+                          for oid, dt_str in data.items()}
             # get mod_dts of all objects on the server to which the user should
             # have access ...
             # initially, just public objects (`ManagedObject` subtypes)
@@ -699,11 +699,11 @@ class RepositoryService(ApplicationSession):
             public_oids = [o.oid for o in orb.search_exact(public=True)]
             if public_oids:
                 server_dts = {oid: uncook_datetime(dt_str) for oid, dt_str
-                              in list(orb.get_mod_dts(oids=public_oids).items())}
+                              in orb.get_mod_dts(oids=public_oids).items()}
             # oids of newer objects on the server (or objects unknown to user)
             newer_oids = []
             if server_dts:
-                for server_oid, server_dt in list(server_dts.items()):
+                for server_oid, server_dt in server_dts.items():
                     client_dt = dts_by_oid.get(server_oid)
                     if ((not client_dt) or
                         (client_dt and client_dt < server_dt)):
@@ -712,10 +712,10 @@ class RepositoryService(ApplicationSession):
                     if dts_by_oid.get(oid):
                         del dts_by_oid[oid]
                 # oids of server objects with same mod_datetime as submitted oids
-                same_oids = [oid for oid, dt in list(dts_by_oid.items())
+                same_oids = [oid for oid, dt in dts_by_oid.items()
                              if dt == server_dts.get(oid)]
                 # oids of older objects on the server
-                older_oids = [oid for oid, dt in list(dts_by_oid.items())
+                older_oids = [oid for oid, dt in dts_by_oid.items()
                               if (server_dts.get(oid)
                                   and (dt > server_dts.get(oid)))]
             if newer_oids:
@@ -768,7 +768,7 @@ class RepositoryService(ApplicationSession):
                     for oid in unknown_oids:
                         del data[oid]
                     dts_by_oid = {oid: uncook_datetime(dts)
-                                  for oid, dts in list(data.items())}
+                                  for oid, dts in data.items()}
                     newer_objs = [obj for obj in server_objs
                                   if obj.oid not in dts_by_oid]
                     for o in server_objs:
