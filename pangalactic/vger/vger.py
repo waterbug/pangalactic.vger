@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 """
-The Pan Galactic Entropy Reverser
+The Virtual Galactic Entropy Reverser
 """
-from __future__ import print_function
-from builtins import str
 import argparse, atexit, json, os, six, sys
 from uuid import uuid4
 
