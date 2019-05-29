@@ -37,9 +37,6 @@ TICKETS = {
     }
 
 gsfc_mel_parms = [
-            'm_CBE', 'm_ctgcy', 'm_MEV', 'm_NTE', 'm_margin',
-            'P_CBE', 'P_ctgcy', 'P_MEV', 'P_NTE', 'P_margin',
-            'R_CBE', 'R_ctgcy', 'R_MEV', 'R_NTE', 'R_margin',
             'm', 'P', 'R_D', 'Vendor', 'Cost', 'TRL']
 
 
@@ -114,33 +111,17 @@ class RepositoryService(ApplicationSession):
         else:
             raise Exception("Invalid authmethod {}".format(challenge.method))
 
-    def on_org_added(self, msg):
-        """
-        Handle the content of a message from the omb.organizationlist
-        channel.  The "content" of the message should be a single serialized
-        Organization instance (or subclass thereof).
-        """
-        orb.log.info('* on_org_added() ...')
-        orb.log.info('  [msg received on omb.organizationlist channel]')
-        if not msg:
-            orb.log.info("  msg was empty.")
-            return
-        for item in msg.items():
-            subject, content = item
-            if subject == u'organization':
-                org_id = content.get(u'id')
-                orb.log.info('  new organization: {}'.format(org_id))
-                deserialize(orb, [content])
-
     def on_vger_msg(self, msg):
+        """
+        Handle messages from the 'vger.channel.public' channel.
+        """
         for item in msg.items():
             subject, content = item
             orb.log.info("* on_vger_msg")
             orb.log.info("      subject: {}".format(str(subject)))
             if subject == u'deleted':
                 orb.log.info("      content: {}".format(str(content)))
-                obj_oid = content
-                self.delete_object(obj_oid)
+                orb.log.info("      (taking no action)")
             # elif subject == u'decloaked':
                 # obj_oid, obj_id, actor_oid, actor_id = content
             # elif subject == u'modified':
@@ -149,68 +130,94 @@ class RepositoryService(ApplicationSession):
                 # obj_oid = content[u'oid']
                 # obj_id = content[u'id']
 
-    def delete_object(self, oid, cb_details=None):
-        """
-        Deletes the object by oid. 
-
-        Args:
-            oid (str):  object oid
-
-        Keyword Args:
-            cb_details:  added by crossbar; not included in rpc signature
-
-        Returns:
-            str:  status message
-        """
-        orb.log.info('* vger.delete_object()')
-        # TODO:  check that user has permission to delete
-        obj = orb.get(oid)
-        if obj is not None:
-            orb.delete([obj])
-            orb.log.info(' - object {} deleted.'.format(oid))
-        else:
-            orb.log.info(' - object {} not found on server.'.format(oid))
-
     @inlineCallbacks
     def onJoin(self, details):
         orb.log.info("* session attached")
-        orb.log.info("  getting persons, projects, and role assignments ...")
-        orb.log.info("  [calling omb.state.query()]")
-        try:
-            data = yield self.call(u'omb.state.query', no_filter=True)
-        except:
-            data = None
-            orb.log.info("  - failed to get admin data (exception from rpc)")
-        try:
-            if data is not None:
-                if data.get(u'roles'):
-                    orb.log.info("  - got {} roles".format(
-                                 len(data[u'roles'])))
-                    deserialize(orb, data[u'roles'])
-                if data.get(u'users'):
-                    orb.log.info("  - got {} users".format(
-                                 len(data[u'users'])))
-                    deserialize(orb, data[u'users'])
-                if data.get(u'organizations'):
-                    orb.log.info("  - got {} organizations".format(
-                                 len(data[u'organizations'])))
-                    deserialize(orb, data[u'organizations'])
-                if data.get(u'roleAssignments'):
-                    orb.log.info("  - got {} roleAssignments".format(
-                                 len(data[u'roleAssignments'])))
-                    deserialize(orb, data[u'roleAssignments'])
-        except:
-            orb.log.info("  - could not process result of rpc.")
-        orb.log.info("* subscribing to omb.organizationlist ...")
-        try:
-            yield self.subscribe(self.on_org_added, u'omb.organizationlist')
-        except:
-            orb.log.info("  subscription to omb.organizationlist failed.")
         try:
             # TODO: include other per-organization channels ...
             yield self.subscribe(self.on_vger_msg, u'vger.channel.public')
         except:
-            orb.log.info("  subscription to vger.deletes failed.")
+            orb.log.info("  subscription to vger.channel.public failed.")
+
+        def assign_role(serialized_ra, cb_details=None):
+            """
+            Save a role assignment (RoleAssignment instance) to the repository.
+
+            Args:
+                serialized_ra (list of dict):  a serialized RoleAssignment
+                    object (list containing a single dict)
+
+            Keyword Args:
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                dict of dicts, in the form:
+                    {'new_obj_dts':  {obj0.oid : str(obj0.mod_datetime),
+                                      obj1.oid : str(obj1.mod_datetime),
+                                      ...},
+                     'mod_obj_dts':  {obj2.oid : str(obj2.mod_datetime),
+                                      obj3.oid : str(obj3.mod_datetime),
+                                      ...}
+                                      }
+            """
+            orb.log.info('[rpc] vger.assign_role() ...')
+            if not serialized_ra:
+                orb.log.info('  called with nothing; returning.')
+                return {'result': 'success.'}
+            orb.log.info('  inspecting serialized ra ...')
+            try:
+                ra_dict = serialized_ra[0]
+                orb.log.info(str(ra_dict))
+            except:
+                orb.log.info('  inspection failed.')
+                return {'result': 'nothing saved.'}
+            userid = getattr(cb_details, 'caller_authid', 'unknown')
+            orb.log.info('  caller authid: {}'.format(str(userid)))
+            user_obj = orb.select('Person', id=userid)
+            org_oid = ra_dict.get('role_assignment_context')
+            if org_oid:
+                # is user an Administrator for this org?
+                org = orb.get(org_oid)
+                admin_role = orb.get('pgefobjects:Role.Administrator')
+                admin_ra = orb.select('RoleAssignment',
+                                      assigned_role=admin_role,
+                                      assigned_to=user_obj,
+                                      role_assignment_context=org)
+                if admin_ra:
+                    orb.log.info('  role assignment is authorized, saving ...')
+                    output = deserialize(orb, [ra_dict], dictify=True)
+                    mod_ra_dts = {}
+                    new_ra_dts = {}
+                    for mod_ra in output['modified']:
+                        orb.log.info('   modified ra oid: {}'.format(
+                                                                mod_ra.oid))
+                        orb.log.info('                id: {}'.format(
+                                                                mod_ra.id))
+                        content = (mod_ra.oid, mod_ra.id,
+                                   str(mod_ra.mod_datetime))
+                        # role assignments are always "public"
+                        orb.log.info('   publishing mod ra on public channel.')
+                        channel = u'vger.channel.public'
+                        self.publish(channel, {u'modified': content})
+                        mod_ra_dts[mod_ra.oid] = str(mod_ra.mod_datetime)
+                    for new_ra in output['new']:
+                        orb.log.info('   new ra oid: {}'.format(new_ra.oid))
+                        orb.log.info('           id: {}'.format(new_ra.id))
+                        orb.log.info('   publishing new ra on public channel.')
+                        channel = u'vger.channel.public'
+                        self.publish(channel, {u'decloaked':
+                                         [new_ra.oid, new_ra.id,
+                                          '', '']})
+                        new_ra_dts[new_ra.oid] = str(new_ra.mod_datetime)
+                    return dict(new_obj_dts=new_ra_dts, mod_obj_dts=mod_ra_dts)
+                else:
+                    orb.log.info('  role assignment not authorized.')
+            else:
+                orb.log.info('  no role_assignment_context found.')
+                return {'result': 'nothing saved.'}
+
+        yield self.register(assign_role, u'vger.assign_role',
+                            RegisterOptions(details_arg='cb_details'))
 
         def save(serialized_objs, cb_details=None):
             """
@@ -319,59 +326,38 @@ class RepositoryService(ApplicationSession):
         yield self.register(save, u'vger.save',
                             RegisterOptions(details_arg='cb_details'))
 
-        def modify(oid, cb_details=None, **kw):
+        def delete(oids, cb_details=None):
             """
-            Use a set of attribute-value pairs to update an object.
+            Deletes a set of objects by their oids.
 
             Args:
-                oid (str):  oid of the object to be modified
+                oids (list of str):  object oids
 
             Keyword Args:
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                success (bool):  True if successful
+                tuple of lists:  (oids_not_found, oids_deleted)
             """
-            orb.log.info('[rpc] vger.modify() ...')
-            # TODO: validation
-            obj = orb.get(oid)
-            if obj:
-                schema = orb.schemas[obj.__class__.__name__]
-                if kw:
-                    if kw.get('parameters'):
-                        # ******** WORK IN PROGRESS ***************************
-                        # NOTE:  'parameters' kw arg is a temporary work-around
-                        # for parameters not being properties
-                        # ******** WORK IN PROGRESS ***************************
-                        kw.pop('parameters')
-                    for a, val in kw.items():
-                        # TODO: return error for kw args not in fields
-                        if a in schema['fields']:
-                            setattr(obj, a, val)
-                    obj.mod_datetime = dtstamp()
-                    # orb.db.merge(obj)
-                    orb.db.commit()
-                    # publish 'modified' message to all channels for which this
-                    # object is decloaked
-                    # TODO: optimize this by formulating a db query that just
-                    # returns the unique org id's
-                    grants = orb.search_exact(cname='ObjectAccess',
-                                              accessible_object=obj)
-                    orgs = set([grant.grantee for grant in grants])
-                    content = (obj.oid, obj.id, str(obj.mod_datetime))
-                    for org in orgs:
-                        channel = u'vger.channel.' + str(getattr(org, 'id',
-                                                                     'public'))
-                        self.publish(channel, {u'modified': content})
-                    return content
-                else:
-                    # return error: no kw args
-                    return False
-            else:
-                # return error: obj not found
-                return False
+            orb.log.info('* vger.delete()')
+            # TODO:  check that user has permission to delete
+            userid = getattr(cb_details, 'caller_authid', None)
+            user = orb.select('Person', id=userid)
+            objs_by_oid = {oid: orb.get(oid) for oid in oids}
+            oids_not_found = [oid for oid, obj in objs_by_oid.items()
+                              if obj is None]
+            objs_found = {oid: obj for oid, obj in objs_by_oid.items()
+                          if obj is not None}
+            # deletions are authorized only for objs created by this user
+            # NOTE: objects without a 'creator' attribute cannot be deleted ->
+            # only instances of subclasses of 'Modelable' can be deleted.
+            auth_dels = {oid: obj for oid, obj in objs_found.items()
+                         if getattr(obj, 'creator', None) is user}
+            orb.delete(auth_dels.values())
+            oids_deleted = list(auth_dels.keys())
+            return (oids_not_found, oids_deleted)
 
-        yield self.register(modify, u'vger.modify',
+        yield self.register(delete, u'vger.delete',
                             RegisterOptions(details_arg='cb_details'))
 
         def decloak(obj_oid, actor_oid, cb_details=None):
