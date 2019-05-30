@@ -163,13 +163,13 @@ class RepositoryService(ApplicationSession):
             orb.log.info('[rpc] vger.assign_role() ...')
             if not serialized_ra:
                 orb.log.info('  called with nothing; returning.')
-                return {'result': 'success.'}
+                return {'result': 'nothing saved.'}
             orb.log.info('  inspecting serialized ra ...')
             try:
                 ra_dict = serialized_ra[0]
                 orb.log.info(str(ra_dict))
             except:
-                orb.log.info('  inspection failed.')
+                orb.log.info('  deserialization failed.')
                 return {'result': 'nothing saved.'}
             userid = getattr(cb_details, 'caller_authid', 'unknown')
             orb.log.info('  caller authid: {}'.format(str(userid)))
@@ -794,12 +794,34 @@ class RepositoryService(ApplicationSession):
                 kw:  keyword arguments dictionary
 
             Returns:
-                list:  oids of the instances
+                list:  the objects found by the search
             """
             orb.log.info('[rpc] vger.search_exact() ...')
-            return [o.oid for o in orb.search_exact(**kw)]
+            return serialize(orb, orb.search_exact(**kw))
 
         yield self.register(search_exact, u'vger.search_exact')
+
+        def get_ras_for_org(org_oid):
+            """
+            Get all RoleAssignment objects for the Organization with the
+            specified oid.
+
+            Args:
+                org_oid (str):  oid of the Organization
+
+            Returns:
+                list:  list of serialized RoleAssignment objects
+            """
+            orb.log.info('[rpc] vger.get_ras_for_org() ...')
+            org = orb.get(org_oid)
+            if org:
+                return serialize(orb,
+                                 orb.search_exact(cname='RoleAssignment',
+                                                  role_assignment_context=org))
+            else:
+                return []
+
+        yield self.register(get_ras_for_org, u'vger.get_ras_for_org')
 
         def get_version():
             """
