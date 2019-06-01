@@ -28,7 +28,7 @@ from pangalactic.core.uberorb          import orb
 from pangalactic.core.refdata          import ref_pd_oids
 from pangalactic.core.test.utils       import (create_test_users,
                                                create_test_project)
-from pangalactic.core.utils.datetimes  import dtstamp
+from pangalactic.core.utils.datetimes  import dtstamp, earlier
 
 
 TICKETS = {
@@ -599,7 +599,7 @@ class RepositoryService(ApplicationSession):
             newer_oids = []
             for server_oid, server_dt in server_dts.items():
                 client_dt = dts_by_oid.get(server_oid)
-                if client_dt and client_dt < server_dt:
+                if earlier(client_dt, server_dt):
                     newer_oids.append(server_oid)
             for oid in newer_oids:
                 del dts_by_oid[oid]
@@ -689,8 +689,7 @@ class RepositoryService(ApplicationSession):
             if server_dts:
                 for server_oid, server_dt in server_dts.items():
                     client_dt = dts_by_oid.get(server_oid)
-                    if ((not client_dt) or
-                        (client_dt and client_dt < server_dt)):
+                    if earlier(client_dt, server_dt):
                         newer_oids.append(server_oid)
                 for oid in newer_oids:
                     if dts_by_oid.get(oid):
@@ -757,7 +756,7 @@ class RepositoryService(ApplicationSession):
                                   if obj.oid not in dts_by_oid]
                     for o in server_objs:
                         dts = dts_by_oid.get(o.oid)
-                        if dts and dts < o.mod_datetime:
+                        if earlier(dts, o.mod_datetime):
                             newer_objs.append(o)
                     same_oids = [o.oid for o in server_objs
                                  if o.mod_datetime == dts_by_oid.get(o.oid)]
@@ -800,28 +799,6 @@ class RepositoryService(ApplicationSession):
             return serialize(orb, orb.search_exact(**kw))
 
         yield self.register(search_exact, u'vger.search_exact')
-
-        def get_ras_for_org(org_oid):
-            """
-            Get all RoleAssignment objects for the Organization with the
-            specified oid.
-
-            Args:
-                org_oid (str):  oid of the Organization
-
-            Returns:
-                list:  list of serialized RoleAssignment objects
-            """
-            orb.log.info('[rpc] vger.get_ras_for_org() ...')
-            org = orb.get(org_oid)
-            if org:
-                return serialize(orb,
-                                 orb.search_exact(cname='RoleAssignment',
-                                                  role_assignment_context=org))
-            else:
-                return []
-
-        yield self.register(get_ras_for_org, u'vger.get_ras_for_org')
 
         def get_version():
             """
@@ -889,7 +866,8 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_object, u'vger.get_mod_dts')
 
-        def get_role_assignments(userid, no_filter=False):
+        # OLD CODE for get_role_assignments ... (was for OMB-compatibility)
+        def get_role_assignments(userid, **kw):
             """
             Retrieves the RoleAssignment objects for the specified userid.
 
@@ -906,31 +884,21 @@ class RepositoryService(ApplicationSession):
                                        assigned_to=user)
                 orgs = set([ra.role_assignment_context for ra in ras
                             if ra.role_assignment_context])
-                if no_filter:
-                    org_dicts = serialize(orb, orgs)
-                    user_dicts = serialize(orb,
-                                    [p for p in
-                                     set([ra.assigned_to for ra in ras])])
-                    role_dicts = serialize(orb,
-                                    [r for r in
-                                     set([ra.assigned_role for ra in ras])])
-                    ra_dicts = serialize(orb, [ra for ra in ras])
-                else:
-                    # yes, this is wildly inefficient ...
-                    org_dicts = [dict(oid=o.oid, id=o.id, name=o.name,
-                                 description=o.description,
-                                 parent_organization=getattr(
-                                            o.parent_organization, 'oid', None))
-                                 for o in orgs]
-                    user_dicts = [dict(oid=p.oid, id=p.id, name=p.name)
-                                  for p in set([ra.assigned_to for ra in ras])]
-                    role_dicts = [dict(oid=r.oid, id=r.id, name=r.name)
-                                  for r in set([ra.assigned_role for ra in ras])]
-                    ra_dicts = [dict(oid=ra.oid, assigned_role=ra.assigned_role.oid,
-                        assigned_to=ra.assigned_to.oid,
-                        role_assignment_context=getattr(
-                                            ra.role_assignment_context, 'oid', None))
-                        for ra in ras]
+                # yes, this is wildly inefficient ...
+                org_dicts = [dict(oid=o.oid, id=o.id, name=o.name,
+                             description=o.description,
+                             parent_organization=getattr(
+                                        o.parent_organization, 'oid', None))
+                             for o in orgs]
+                user_dicts = [dict(oid=p.oid, id=p.id, name=p.name)
+                              for p in set([ra.assigned_to for ra in ras])]
+                role_dicts = [dict(oid=r.oid, id=r.id, name=r.name)
+                              for r in set([ra.assigned_role for ra in ras])]
+                ra_dicts = [dict(oid=ra.oid, assigned_role=ra.assigned_role.oid,
+                    assigned_to=ra.assigned_to.oid,
+                    role_assignment_context=getattr(
+                                        ra.role_assignment_context, 'oid', None))
+                    for ra in ras]
                 return {u'organizations': org_dicts,
                         u'users': user_dicts,
                         u'roles': role_dicts,
@@ -940,6 +908,55 @@ class RepositoryService(ApplicationSession):
                 return {}
 
         yield self.register(get_role_assignments, u'vger.get_role_assignments')
+
+        def get_user_roles(userid):
+            """
+            Get the RoleAssignment objects that have the user with the
+            specified userid as their 'assigned_to' (Person) attribute,
+            and return the serialized user (Person) and RoleAssignment objects.
+
+            Args:
+                userid (str):  userid of a person (Person.id)
+
+            Returns:
+                tuple of lists:  [0] serialized user (Person) object,
+                                 [1] serialized RoleAssignment objects
+            """
+            orb.log.info('[rpc] vger.get_role_assignments({}) ...'.format(
+                                                                    userid))
+            user = orb.select('Person', id=userid)
+            if user:
+                ras = orb.search_exact(cname='RoleAssignment',
+                                       assigned_to=user)
+                szd_ras = serialize(orb, ras)
+                szd_user = serialize(orb, [user])
+                return [szd_user, szd_ras]
+            else:
+                return []
+
+        yield self.register(get_user_roles, u'vger.get_user_roles')
+
+        def get_roles_in_org(org_oid):
+            """
+            Get all RoleAssignment objects that have the Organization with the
+            specified oid as their 'role_assignment_context' attribute.
+
+            Args:
+                org_oid (str):  oid of the Organization
+
+            Returns:
+                list:  list of serialized RoleAssignment objects
+            """
+            orb.log.info('[rpc] vger.get_roles_in_org() ...')
+            org = orb.get(org_oid)
+            if org:
+                return serialize(orb,
+                                 orb.search_exact(cname='RoleAssignment',
+                                                  role_assignment_context=org))
+            else:
+                return []
+
+        yield self.register(get_roles_in_org, u'vger.get_roles_in_org')
 
         def get_user_object(userid):
             """
