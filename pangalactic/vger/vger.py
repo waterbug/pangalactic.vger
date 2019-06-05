@@ -571,6 +571,11 @@ class RepositoryService(ApplicationSession):
             data that are unknown to the server *and* not created by the
             requestor will be deleted.
 
+            NOTE: the main use case for `sync_objects()` is to sync a user's
+            created objects between their client's local database and the
+            repository, so that any objects the user created since their last
+            login will be added to the repository.
+
             Args:
                 data (dict):  dict {oid: str(mod_datetime)}
                     for the objects to be synced
@@ -922,8 +927,7 @@ class RepositoryService(ApplicationSession):
                 tuple of lists:  [0] serialized user (Person) object,
                                  [1] serialized RoleAssignment objects
             """
-            orb.log.info('[rpc] vger.get_role_assignments({}) ...'.format(
-                                                                    userid))
+            orb.log.info('[rpc] vger.get_user_roles({}) ...'.format(userid))
             user = orb.select('Person', id=userid)
             if user:
                 ras = orb.search_exact(cname='RoleAssignment',
@@ -932,7 +936,7 @@ class RepositoryService(ApplicationSession):
                 szd_user = serialize(orb, [user])
                 return [szd_user, szd_ras]
             else:
-                return []
+                return [[], []]
 
         yield self.register(get_user_roles, u'vger.get_user_roles')
 
