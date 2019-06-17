@@ -267,6 +267,8 @@ class RepositoryService(ApplicationSession):
                            str(mod_obj.mod_datetime))
                 # determine who has access to the object
                 orgs = get_orgs_with_access(mod_obj)
+                # if the object does not have a 'public' attr*, it is public
+                # NOTE:  * this includes Acu and ProjectSystemUsage objects
                 if getattr(mod_obj, 'public', True):
                     orb.log.info('   modified object is public -- ')
                     orb.log.info('   publish "modified" on public channel...')
@@ -290,6 +292,8 @@ class RepositoryService(ApplicationSession):
                 # ** NOTE: no orgs have access to "SANDBOX" project, so that
                 # prevents SANDBOX PSUs from being decloaked
                 orgs = get_orgs_with_access(new_obj)
+                # if the object does not have a 'public' attr*, it is public
+                # NOTE:  * this includes Acu and ProjectSystemUsage objects
                 if getattr(new_obj, 'public', False):
                     orb.log.info('   new object is public -- ')
                     orb.log.info('   publish "decloaked" on public channel...')
@@ -348,13 +352,30 @@ class RepositoryService(ApplicationSession):
                               if obj is None]
             objs_found = {oid: obj for oid, obj in objs_by_oid.items()
                           if obj is not None}
-            # deletions are authorized only for objs created by this user
+            # deletions are authorized only for objs created by this user,
+            # except in the case of RoleAssignments ...
             # NOTE: objects without a 'creator' attribute cannot be deleted ->
             # only instances of subclasses of 'Modelable' can be deleted.
             auth_dels = {oid: obj for oid, obj in objs_found.items()
                          if getattr(obj, 'creator', None) is user}
-            orb.delete(auth_dels.values())
+            # check for RoleAssignments
+            admin_role = orb.get('pgefobjects:Role.Administrator')
+            for obj in objs_found.values():
+                if isinstance(obj, orb.classes['RoleAssignment']):
+                    # RoleAssignments can only be deleted by an Administrator
+                    # for the Organization in which the Role was assigned
+                    org = obj.role_assignment_context
+                    admin = orb.select('RoleAssignment', assigned_to=user,
+                                       assigned_role=admin_role,
+                                       role_assignment_context=org)
+                    if admin:
+                        auth_dels[obj.oid] = obj
             oids_deleted = list(auth_dels.keys())
+            orb.delete(auth_dels.values())
+            for oid in oids_deleted:
+                orb.log.info('   publishing "deleted" msg to public channel.')
+                channel = u'vger.channel.public'
+                self.publish(channel, {u'deleted': oid})
             return (oids_not_found, oids_deleted)
 
         yield self.register(delete, u'vger.delete',
@@ -567,14 +588,16 @@ class RepositoryService(ApplicationSession):
 
         def sync_objects(data, cb_details=None):
             """
-            Sync the objects referenced by the data.  NOTE:  objects in the
-            data that are unknown to the server *and* not created by the
-            requestor will be deleted.
+            Sync the objects referenced by the data.  NOTE:  oids in the data
+            that are unknown to the server will be returned in the 4th element
+            of the result (i.e., [3] in the result specification below).
 
-            NOTE: the main use case for `sync_objects()` is to sync a user's
-            created objects between their client's local database and the
-            repository, so that any objects the user created since their last
-            login will be added to the repository.
+            NOTE: the main use case for `sync_objects()` is as the first step
+            in syncing a user's created objects between their client's local
+            database and the repository, so that any objects the user created
+            since their last login will be added to the repository (that will
+            be done in a separate rpc by the client after it receives this
+            result with the oids not found on the server).
 
             Args:
                 data (dict):  dict {oid: str(mod_datetime)}
@@ -970,7 +993,7 @@ class RepositoryService(ApplicationSession):
                 userid (str):  userid of a person (Person.id)
 
             Returns:
-                role_assignments:  instances of RoleAssignment
+                list:  list containing a serialized Person object
             """
             orb.log.info('[rpc] vger.get_user_object()')
             return serialize(orb, [orb.select('Person', id=userid)])[0]
