@@ -29,6 +29,7 @@ from pangalactic.core.refdata          import ref_pd_oids
 from pangalactic.core.test.utils       import (create_test_users,
                                                create_test_project)
 from pangalactic.core.utils.datetimes  import dtstamp, earlier
+from pangalactic.vger.userdir          import search
 
 
 TICKETS = {
@@ -1000,24 +1001,22 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_user_object, u'vger.get_user_object')
 
-        def get_thing_modeled(oid, cb_details=None):
+        def search_ldap(**kw):
             """
-            Get the thing that a model models.
+            Search an LDAP directory using the specified keywords.
 
-            Args:
-                oid (str):  oid of the model
+            Keyword Args:
+                kw (dict): a dict of keyword arguments from which to compose
+                    the LDAP search filter
 
             Returns:
-                str:  oid of the thing that the model models.
+                list:  list containing dicts of info on persons in the LDAP
+                    directory
             """
-            model = orb.get(oid)
-            if model is not None:
-                return model.of_thing.oid
-            else:
-                return None
+            orb.log.info('[rpc] vger.search_ldap')
+            return search(**kw)
 
-        yield self.register(get_thing_modeled, u'vger.get_thing_modeled',
-                            RegisterOptions(details_arg='cb_details'))
+        yield self.register(search_ldap, u'vger.search_ldap')
 
         ###### json procedures: call the rpc and json.dump the output
         ###### (for use with crossbar's "REST Bridge")
@@ -1051,27 +1050,21 @@ class RepositoryService(ApplicationSession):
                 return json.dumps(False)
         yield self.register(json_delete, u'vger.json_delete')
 
-        def json_get_thing_modeled(oid):
-            """
-            Call get_thing_modeled as a http rest call
-            """
-            obj = get_thing_modeled(oid)
-            # the slice removes quotes added by json
-            return json.dumps(obj).decode('utf-8')[1:-1]
-        yield self.register(json_get_thing_modeled, u'vger.json_get_thing_modeled')
-
         # end of backend setup
         orb.log.info("procedures registered")
 
 if __name__ == '__main__':
 
     home_help = 'home directory (used by orb) [default: current directory]'
-    cert_help = 'crossbar host cert file [default: server_cert.pem].'
+    config_help = 'initial config file name [default: "config"]'
+    cert_help = 'crossbar host cert file name [default: "server_cert.pem"].'
     parser = argparse.ArgumentParser()
     parser.add_argument('--authid', dest='authid', type=six.text_type,
                         help='id to connect as (required)')
     parser.add_argument('--home', dest='home', type=six.text_type,
                         help=home_help)
+    parser.add_argument('--config', dest='config', type=six.text_type,
+                        help=config_help)
     parser.add_argument('--db_url', dest='db_url', type=six.text_type,
                         help='db connection url (used by orb)')
     parser.add_argument('--cb_host', dest='cb_host', type=six.text_type,
@@ -1090,26 +1083,29 @@ if __name__ == '__main__':
 
     # command options override config settings; if neither, defaults are used
     home = options.home or ''
-    read_config(os.path.join(home, 'config'))
-    authid = options.authid or config.get('authid', u'service2')
+    if os.path.exists(options.config):
+        read_config(options.config)
+    else:
+        read_config(os.path.join(home, 'config'))
+    authid = options.authid or config.get('authid', 'service2')
     if type(authid) is not str:
         authid = str(authid, 'utf-8')
     # unix domain socket connection to db:  socket located in home dir
     domain_socket = home + '/vgerdb_socket'
     db_url = options.db_url or config.get('db_url',
-                u'postgresql://scred@:5432/vgerdb?host={}'.format(domain_socket))
+             'postgresql://scred@:5432/vgerdb?host={}'.format(domain_socket))
     test = options.test or config.get('test', False)
     debug = options.debug or config.get('debug', False)
     extra = {
-        u'authid': authid,
-        u'home': home,
-        u'db_url': db_url,
+        'authid': authid,
+        'home': home,
+        'db_url': db_url,
         'debug': debug,
         'test': test
         }
     cb_host = options.cb_host or config.get('cb_host', 'localhost')
     cb_port = options.cb_port or config.get('cb_port', '8080')
-    cb_url = str('wss://{}:{}/ws'.format(cb_host, cb_port))
+    cb_url = 'wss://{}:{}/ws'.format(cb_host, cb_port)
     # router can auto-choose the realm, so not necessary to specify
     realm = None
     config['authid'] = authid
