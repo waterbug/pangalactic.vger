@@ -102,28 +102,16 @@ def search_ldap_directory(ldap_url, base_dn, test=False, **kw):
     """
     # the search string, f, is ok as a python 3 string (unicode)
     f = '(nasaIdentityStatus=Active)'
-    # if status:
-        # f += '(nasaIdentityStatus={})'.format(status)
-    if kw.get('last_name'):
-        f += '(sn={})'.format(kw['last_name'])
-    # if fn:
-        # f += '(givenName={})'.format(fn)
-    # if center:
-        # f += '(ou=%s)'.format(center)
-    # if nasa_paid_center:
-        # f += '(nasaPaidCenter={})'.format(nasa_paid_center)
-    # if code:
-        # f += '(nasaorgCode={})'.format(''.join(code.split('.')))
-    # if employer:
-        # f += '(nasaEmployer={})'.format(employer)
-    # if auid:
-        # f += '(agencyUID={}'.format(auid)
     valid_fields = list(config.get('ldap_schema', {}).keys())
     if kw and valid_fields:
-        valid_values = [(a, kw[a]) for a in list(kw.keys())
+        schema = config['ldap_schema']
+        valid_values = [(schema[a], kw[a]) for a in list(kw.keys())
                         if a in valid_fields]
-        for a, value in valid_values:
-            f += '({}={})'.format(a, value)
+        for ldap_field, value in valid_values:
+            f += '({}={})'.format(ldap_field, value)
+    else:
+        # don't do the search if we didn't get kw args or don't have a schema
+        return []
     f = '(&'+f+'(objectClass=person))'
     if test:
         return f
