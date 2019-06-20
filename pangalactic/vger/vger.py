@@ -29,7 +29,7 @@ from pangalactic.core.refdata          import ref_pd_oids
 from pangalactic.core.test.utils       import (create_test_users,
                                                create_test_project)
 from pangalactic.core.utils.datetimes  import dtstamp, earlier
-from pangalactic.vger.userdir          import search
+from pangalactic.vger.userdir          import search_ldap_directory
 
 
 TICKETS = {
@@ -1014,7 +1014,13 @@ class RepositoryService(ApplicationSession):
                     directory
             """
             orb.log.info('[rpc] vger.search_ldap')
-            return search(**kw)
+            ldap_url = config.get('ldap_url')
+            base_dn = config.get('base_dn')
+            if (ldap_url and base_dn) or ('test' in kw and kw.get('test')):
+                return search_ldap_directory(ldap_url, base_dn, **kw)
+            else:
+                # TODO:  return a message that ldap is not available ...
+                return []
 
         yield self.register(search_ldap, u'vger.search_ldap')
 
@@ -1064,7 +1070,7 @@ if __name__ == '__main__':
     parser.add_argument('--home', dest='home', type=six.text_type,
                         help=home_help)
     parser.add_argument('--config', dest='config', type=six.text_type,
-                        help=config_help)
+                        default='config', help=config_help)
     parser.add_argument('--db_url', dest='db_url', type=six.text_type,
                         help='db connection url (used by orb)')
     parser.add_argument('--cb_host', dest='cb_host', type=six.text_type,
@@ -1122,6 +1128,8 @@ if __name__ == '__main__':
     print("       realm:  '{}'".format(realm or "not specified (auto-choose)"))
     print("       authid: '{}'".format(authid))
     print("   db url: '{}'".format(options.db_url))
+    print("   ldap url: '{}'".format(config.get('ldap_url', '[not set]')))
+    print("   base_dn: '{}'".format(config.get('base_dn', '[not set]')))
     print("   test: '{}'".format(str(test)))
     print("   debug: '{}'".format(str(debug)))
     if authid not in TICKETS:

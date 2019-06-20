@@ -2,8 +2,9 @@
 Generic search interface to an LDAP user directory.
 """
 import ldap
+from pangalactic.core import config
 
-def search_by_filterstring(filterstring, ldap_url, base_dn, sizelimit=0):
+def search_by_filterstring(ldap_url, base_dn, filterstring, sizelimit=0):
     """
     Do an search of the NED using an LDAP filter string.
     NOTE: for python 3, python-ldap returns the result as a UTF-8 encoded
@@ -43,7 +44,6 @@ def search_by_filterstring(filterstring, ldap_url, base_dn, sizelimit=0):
             if result_type == ldap.RES_SEARCH_ENTRY:
                 result_set.append(result_data)
     return result_set
-
 
 def _get_dir_info(res):
     """
@@ -90,12 +90,10 @@ def _get_dir_info(res):
     dir_info['display_name'] = display_name
     return dir_info
 
-
-def search(status='Active', ln=None, fn=None, center=None, code=None,
-           nasa_paid_center=None, employer=None, **kw):
+def search_ldap_directory(ldap_url, base_dn, test=False, **kw):
     """
-    [EXPERIMENTAL:  if search is under-specified, result may exceed maximum
-    allowed size.] Find personnel in the NED using the specified properties.
+    NOTE: if search is under-specified, result may exceed maximum allowed
+    size.] Find personnel in the LDAP directory using the specified properties.
     Default return format is 'dir_info' (a dictionary).
 
     NOTE:
@@ -103,29 +101,37 @@ def search(status='Active', ln=None, fn=None, center=None, code=None,
     'nasa_paid_center' = "logical" center (GSFC contains WFF and GSFC)
     """
     # the search string, f, is ok as a python 3 string (unicode)
-    f = ''
-    if status:
-        f += '(nasaIdentityStatus=%s)' % status
-    if ln:
-        f += '(sn=%s)' % ln
-    if fn:
-        f += '(givenName=%s)' % fn
-    if center:
-        f += '(ou=%s)' % center
-    if nasa_paid_center:
-        f += '(nasaPaidCenter=%s)' % nasa_paid_center
-    if code:
-        f += '(nasaorgCode=%s)' % ''.join(code.split('.'))
-    if employer:
-        f += '(nasaEmployer=%s)' % employer
-    if kw:
-        for a, value in kw.items():
-            f += '(%s=%s)' % (a, value)
-    # NOTE that the *field values* in res will be bytes
-    res = search_by_filterstring('(&'+f+'(objectClass=person))')
-    employees = []
+    f = '(nasaIdentityStatus=Active)'
+    # if status:
+        # f += '(nasaIdentityStatus={})'.format(status)
+    if kw.get('last_name'):
+        f += '(sn={})'.format(kw['last_name'])
+    # if fn:
+        # f += '(givenName={})'.format(fn)
+    # if center:
+        # f += '(ou=%s)'.format(center)
+    # if nasa_paid_center:
+        # f += '(nasaPaidCenter={})'.format(nasa_paid_center)
+    # if code:
+        # f += '(nasaorgCode={})'.format(''.join(code.split('.')))
+    # if employer:
+        # f += '(nasaEmployer={})'.format(employer)
+    # if auid:
+        # f += '(agencyUID={}'.format(auid)
+    valid_fields = list(config.get('ldap_schema', {}).keys())
+    if kw and valid_fields:
+        valid_values = [(a, kw[a]) for a in list(kw.keys())
+                        if a in valid_fields]
+        for a, value in valid_values:
+            f += '({}={})'.format(a, value)
+    f = '(&'+f+'(objectClass=person))'
+    if test:
+        return f
+    # NOTE: the *field values* in res will be bytes
+    res = search_by_filterstring(ldap_url, base_dn, f)
+    people = []
     if res:
         for r in res:
-            employees.append(_get_dir_info(r[0]))
-    return employees
+            people.append(_get_dir_info(r[0]))
+    return people
 
