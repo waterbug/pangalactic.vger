@@ -6,9 +6,10 @@ from pangalactic.core import config
 
 def search_by_filterstring(ldap_url, base_dn, filterstring, sizelimit=0):
     """
-    Do an search of the NED using an LDAP filter string.
+    Do an LDAP search the specified filter string.
+
     NOTE: for python 3, python-ldap returns the result as a UTF-8 encoded
-    string, but the field values are expressed as bytes.
+    string except for the field values which are typed as bytes.
 
     Args:
         filterstring (str): LDAP filter expression
@@ -48,20 +49,20 @@ def search_by_filterstring(ldap_url, base_dn, filterstring, sizelimit=0):
 def _get_dir_info(res):
     """
     Return a dict containing relevant info from an LDAP search result.
+
     [NOTE that the search result field values are expressed as bytes and must
     be decoded to get strings.]
     """
     # NOTE that all the field values here will be bytes
     rawdict = res[1]
-    # user's NED listing might not have some of these properties -- hence the
-    # '_list' items:
+    # this code assumes that a user's listing might not have some of the
+    # properties specified in the configured LDAP schema
     uupic_list = rawdict.get('employeeNumber', [b''])
     initials_list = rawdict.get('initials', [b''])
-    title_list = rawdict.get('title', [b''])
     mail_list = rawdict.get('nasaPrimaryEmail', [b''])
     # code may or may not have a dot -- allow for both cases:
-    decoded_org_code = rawdict['nasaorgCode'][0].decode()
-    nodotcode = ''.join(decoded_org_code.split('.'))
+    org_code_str = rawdict['nasaorgCode'][0].decode()
+    nodotcode = ''.join(org_code_str.split('.'))
     if len(nodotcode) == 4:
         org_code = '.'.join([nodotcode[0:3], nodotcode[3]])
     else:
@@ -74,26 +75,13 @@ def _get_dir_info(res):
                     last_name=rawdict['sn'][0].decode(),
                     employer=rawdict['nasaEmployer'][0].decode(),
                     email=mail_list[0].decode(),
-                    org=org_code,
-                    title=title_list[0].decode())
-    # user's NED listing might not have 'displayName'
-    display_name_list = rawdict.get('displayName')
-    if display_name_list:
-        display_name = display_name_list[0].decode()
-    else:
-        display_name = ''.join([dir_info['last_name'].capitalize(), ', ',
-                                dir_info['first_name'].capitalize(), ' ',
-                                dir_info['middle_initials'], ' (',
-                                dir_info['employer'], '-',
-                                dir_info['org'], ')'
-                                ])
-    dir_info['display_name'] = display_name
+                    org=org_code)
     return dir_info
 
 def search_ldap_directory(ldap_url, base_dn, test=False, **kw):
     """
     NOTE: if search is under-specified, result may exceed maximum allowed
-    size.] Find personnel in the LDAP directory using the specified properties.
+    size.  Find personnel in the LDAP directory using the specified properties.
     Default return format is 'dir_info' (a dictionary).
 
     NOTE:
@@ -101,14 +89,16 @@ def search_ldap_directory(ldap_url, base_dn, test=False, **kw):
     'nasa_paid_center' = "logical" center (GSFC contains WFF and GSFC)
     """
     # the search string, f, is ok as a python 3 string (unicode)
-    f = '(nasaIdentityStatus=Active)'
-    valid_fields = list(config.get('ldap_schema', {}).keys())
-    if kw and valid_fields:
-        schema = config['ldap_schema']
-        valid_values = [(schema[a], kw[a]) for a in list(kw.keys())
-                        if a in valid_fields]
-        for ldap_field, value in valid_values:
-            f += '({}={})'.format(ldap_field, value)
+    schema = config.get('ldap_schema')
+    if schema:
+        f = '(nasaIdentityStatus=Active)'
+        valid_fields = {schema[a]:a for a in schema}
+        if kw and valid_fields:
+            valid_values = [(valid_fields.get(a), kw[a])
+                            for a in list(kw.keys())
+                            if a in valid_fields]
+            for ldap_field, value in valid_values:
+                f += '({}={})'.format(ldap_field, value)
     else:
         # don't do the search if we didn't get kw args or don't have a schema
         return []
