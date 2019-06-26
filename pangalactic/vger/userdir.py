@@ -2,7 +2,8 @@
 Generic search interface to an LDAP user directory.
 """
 import ldap
-from pangalactic.core import config
+from pangalactic.core         import config
+from pangalactic.core.uberorb import orb
 
 def search_by_filterstring(ldap_url, base_dn, filterstring, sizelimit=0):
     """
@@ -48,7 +49,9 @@ def search_by_filterstring(ldap_url, base_dn, filterstring, sizelimit=0):
 
 def _get_dir_info(res):
     """
-    Return a dict containing relevant info from an LDAP search result.
+    Return a dict containing relevant info from an LDAP search result mapped
+    into Person class attributes except for "employer_name" and "org_code",
+    which need to be mapped to Org objects for "employer" and "org" attributes.
 
     [NOTE that the search result field values are expressed as bytes and must
     be decoded to get strings.]
@@ -60,7 +63,7 @@ def _get_dir_info(res):
     uupic_list = rawdict.get('employeeNumber', [b''])
     initials_list = rawdict.get('initials', [b''])
     mail_list = rawdict.get('nasaPrimaryEmail', [b''])
-    # code may or may not have a dot -- allow for both cases:
+    # code may or may not have a dot -- return "dotless" format for both cases:
     org_code_str = rawdict['nasaorgCode'][0].decode()
     nodotcode = ''.join(org_code_str.split('.'))
     if len(nodotcode) == 4:
@@ -68,17 +71,17 @@ def _get_dir_info(res):
     else:
         org_code = rawdict['nasaorgCode'][0].decode()
     # decode each field value so dir_info values are strings ...
-    dir_info = dict(auid=rawdict['agencyUID'][0].decode(),
-                    uupic=uupic_list[0].decode(),
+    dir_info = dict(id=rawdict['agencyUID'][0].decode(),
+                    oid=uupic_list[0].decode(),
                     first_name=rawdict['givenName'][0].decode(),
-                    middle_initials=initials_list[0].decode(),
+                    mi_or_name=initials_list[0].decode(),
                     last_name=rawdict['sn'][0].decode(),
-                    employer=rawdict['nasaEmployer'][0].decode(),
+                    employer_name=rawdict['nasaEmployer'][0].decode(),
                     email=mail_list[0].decode(),
-                    org=org_code)
+                    org_code=org_code)
     return dir_info
 
-def search_ldap_directory(ldap_url, base_dn, test=False, **kw):
+def search_ldap_directory(ldap_url, base_dn, test=None, **kw):
     """
     NOTE: if search is under-specified, result may exceed maximum allowed
     size.  Find personnel in the LDAP directory using the specified properties.
@@ -87,11 +90,27 @@ def search_ldap_directory(ldap_url, base_dn, test=False, **kw):
     NOTE:
     'center' = physical center, or "campus" (WFF, GSFC [aka "GRB"])
     'nasa_paid_center' = "logical" center (GSFC contains WFF and GSFC)
+
+    Args:
+        ldap_url (str): url of the LDAP service
+        base_dn (str): LDAP base domain to search
+
+    Keyword Args:
+        test (str):  default is None; values can be "search" to return the
+            search string for inspection or "result" to return an example
+            result to test the client's handling of it
     """
+    orb.log.info('* userdir: search_ldap_directory()')
+    orb.log.info('  ldap_url = {}'.format(ldap_url))
+    orb.log.info('  base_dn  = {}'.format(base_dn))
+    orb.log.info('  kw = {}'.format(str(kw)))
     # the search string, f, is ok as a python 3 string (unicode)
     schema = config.get('ldap_schema')
-    if schema:
-        f = '(nasaIdentityStatus=Active)'
+    orb.log.info('  ldap_schema = {}'.format(str(schema)))
+    ldap_required_fields = config.get('ldap_required_fields')
+    orb.log.info('  ldap_required_fields = {}'.format(ldap_required_fields))
+    if schema and ldap_required_fields:
+        f = ldap_required_fields
         valid_fields = {schema[a]:a for a in schema}
         if kw and valid_fields:
             valid_values = [(valid_fields.get(a), kw[a])
@@ -102,9 +121,22 @@ def search_ldap_directory(ldap_url, base_dn, test=False, **kw):
     else:
         # don't do the search if we didn't get kw args or don't have a schema
         return []
-    f = '(&'+f+'(objectClass=person))'
-    if test:
+    # create a valid LDAP search string ...
+    f = '(&'+f+')'
+    if test == 'search':
+        # return the search string
         return f
+    if test == 'result':
+        # return an example result (Red Lectroids :)
+        return [dict(oid='12345678', id='bigboote', last_name='Bigboote',
+                     first_name='John', mi_or_name='D', org_code='8900',
+                     employer_name='Yoyodyne'),
+                dict(oid='12345679', id='thornystick', last_name='Thornystick',
+                     first_name='John', mi_or_name='T', org_code='8900',
+                     employer_name='Yoyodyne'),
+                dict(oid='12345670', id='yaya', last_name='Yaya',
+                     first_name='John', mi_or_name='R', org_code='8900',
+                     employer_name='Yoyodyne')]
     # NOTE: the *field values* in res will be bytes
     res = search_by_filterstring(ldap_url, base_dn, f)
     people = []

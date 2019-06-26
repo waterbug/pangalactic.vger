@@ -1014,15 +1014,37 @@ class RepositoryService(ApplicationSession):
                     directory
             """
             orb.log.info('[rpc] vger.search_ldap')
-            ldap_url = config.get('ldap_url')
-            base_dn = config.get('base_dn')
+            ldap_url = config.get('ldap_url') or ''
+            base_dn = config.get('base_dn') or ''
             if (ldap_url and base_dn) or ('test' in kw and kw.get('test')):
+                msg = 'calling search_ldap_directory() with {}'.format(kw)
+                orb.log.info('      {}'.format(msg))
                 return search_ldap_directory(ldap_url, base_dn, **kw)
             else:
                 # TODO:  return a message that ldap is not available ...
+                orb.log.info('      ldap is not available')
                 return []
 
         yield self.register(search_ldap, u'vger.search_ldap')
+
+        def add_person(data):
+            """
+            Add a new Person based on a set of attribute data.
+
+            Args:
+                data (dict): the attribute data
+
+            Returns:
+                result (bool):  if True, success
+            """
+            orb.log.info('[rpc] vger.add_person')
+            if data:
+                msg = '      called with data: {}'.format(str(data))
+                orb.log.info('      {}'.format(msg))
+            else:
+                orb.log.info('      no data provided!')
+
+        yield self.register(add_person, u'vger.add_person')
 
         ###### json procedures: call the rpc and json.dump the output
         ###### (for use with crossbar's "REST Bridge")
