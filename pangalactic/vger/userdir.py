@@ -129,14 +129,17 @@ def search_ldap_directory(ldap_url, base_dn, test=None, **kw):
     if test == 'result':
         # return an example result (Red Lectroids :)
         return [dict(oid='12345678', id='bigboote', last_name='Bigboote',
-                     first_name='John', mi_or_name='D', org_code='8900',
-                     employer_name='Yoyodyne'),
+                     first_name='John', mi_or_name='D', org_code='890.0',
+                     employer_name='Yoyodyne',
+                     email='John.Bigboote@yoyodyne.com'),
                 dict(oid='12345679', id='thornystick', last_name='Thornystick',
-                     first_name='John', mi_or_name='T', org_code='8900',
-                     employer_name='Yoyodyne'),
+                     first_name='John', mi_or_name='T', org_code='890.0',
+                     employer_name='Yoyodyne',
+                     email='John.Thornystick@yoyodyne.com'),
                 dict(oid='12345670', id='yaya', last_name='Yaya',
-                     first_name='John', mi_or_name='R', org_code='8900',
-                     employer_name='Yoyodyne')]
+                     first_name='John', mi_or_name='R', org_code='890.0',
+                     employer_name='Yoyodyne',
+                     email='John.Yaya@yoyodyne.com')]
     # NOTE: the *field values* in res will be bytes
     res = search_by_filterstring(ldap_url, base_dn, f)
     people = []
