@@ -1032,10 +1032,14 @@ class RepositoryService(ApplicationSession):
             Add a new Person based on a set of attribute data.
 
             Args:
-                data (dict): the attribute data
+                data (dict): the attribute data of the Person
 
             Returns:
-                result (bool):  if True, success
+                saved_objs (list of dict):  if successful, a list containing
+                    the serialized Person object, and if either the Person's
+                    'org' or 'employer' Organizations are previously unknown to
+                    the repository, objects for them will be created and
+                    included in the returned list along with the Person object.
             """
             orb.log.info('[rpc] vger.add_person')
             if data:
@@ -1044,13 +1048,27 @@ class RepositoryService(ApplicationSession):
                 saved_objs = []
                 admin = orb.get('pgefobjects:admin')
                 dts = dtstamp()
-                # TODO: this is some NASA-specific stuff that needs to be
-                # factored out ...
+                # TODO: this is some NASA-specific stuff that may be factored
+                # out ...
                 employer_name = data.pop('employer_name', '')
                 if employer_name:
                     employer = orb.select('Organization', name=employer_name)
                     if employer:
                         data['employer'] = employer
+                    elif employer_name:
+                        # if there is a non-null employer name and it does not
+                        # have an Organization object, make one
+                        Organization = orb.classes['Organization']
+                        new_oid = str(uuid4())
+                        new_id = '_'.join(employer_name.split(' '))
+                        employer = Organization(oid=new_oid, id=new_id,
+                                                name=employer_name,
+                                                creator=admin, modifier=admin,
+                                                create_datetime=dts,
+                                                mod_datetime=dts)
+                        orb.save([employer])
+                        data['employer'] = employer
+                        saved_objs.append(employer)
                 org_code = data.pop('org_code', '')
                 if org_code:
                     org = orb.select('Organization', id=org_code)
