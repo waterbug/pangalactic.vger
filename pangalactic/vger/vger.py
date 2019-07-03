@@ -1043,8 +1043,14 @@ class RepositoryService(ApplicationSession):
             """
             orb.log.info('[rpc] vger.add_person')
             if data:
-                msg = '      called with data: {}'.format(str(data))
-                orb.log.info('      {}'.format(msg))
+                msg = 'called with data: {}'.format(str(data))
+                orb.log.info('    {}'.format(msg))
+                # first check if person is already in db ...
+                existing_person = orb.get(data.get('oid'))
+                if existing_person:
+                    orb.log.info('      not adding: person is in the db')
+                    return []
+                orb.log.info('      person oid is not in the db; adding ...')
                 saved_objs = []
                 admin = orb.get('pgefobjects:admin')
                 dts = dtstamp()
@@ -1066,7 +1072,7 @@ class RepositoryService(ApplicationSession):
                                                 creator=admin, modifier=admin,
                                                 create_datetime=dts,
                                                 mod_datetime=dts)
-                        orb.save([employer])
+                        orb.save([employer], recompute=False)
                         data['employer'] = employer
                         saved_objs.append(employer)
                 org_code = data.pop('org_code', '')
@@ -1084,20 +1090,23 @@ class RepositoryService(ApplicationSession):
                                            creator=admin, modifier=admin,
                                            create_datetime=dts,
                                            mod_datetime=dts)
-                        orb.save([org])
+                        orb.save([org], recompute=False)
                         data['org'] = org
                         saved_objs.append(org)
                 Person = orb.classes['Person']
                 person = Person(creator=admin, modifier=admin,
                                 create_datetime=dts, mod_datetime=dts, **data)
-                orb.save([person])
+                orb.save([person], recompute=False)
                 saved_objs.append(person)
                 orb.log.info('   new person oid: {}'.format(person.oid))
                 orb.log.info('               id: {}'.format(person.id))
                 orb.log.info('   publishing "person added" on admin channel.')
                 channel = 'vger.channel.admin'
                 self.publish(channel, {'person added': person.oid})
-                return serialize(orb, saved_objs)
+                res = serialize(orb, saved_objs)
+                orb.log.info('   returning serialized objects: {}'.format(
+                                                                str(res)))
+                return res
             else:
                 orb.log.info('      no data provided!')
                 return []
