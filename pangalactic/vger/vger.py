@@ -247,7 +247,8 @@ class RepositoryService(ApplicationSession):
             orb.log.info('  called for objects with object ids:')
             sobjs_list = ''
             for so in serialized_objs:
-                sobjs_list += '   + {} ({})\n'.format(so['id'], so['_cname'])
+                sobjs_list += '   + {} ({})\n'.format(so.get('id', '[no id]'),
+                                                      so['_cname'])
             orb.log.info(sobjs_list)
             userid = getattr(cb_details, 'caller_authid', 'unknown')
             orb.log.info('  caller authid: {}'.format(str(userid)))
