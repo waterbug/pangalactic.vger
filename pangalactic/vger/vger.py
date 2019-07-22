@@ -944,6 +944,8 @@ class RepositoryService(ApplicationSession):
             Get the RoleAssignment objects that have the user with the
             specified userid as their 'assigned_to' (Person) attribute,
             and return the serialized user (Person) and RoleAssignment objects.
+            If the user is a Global Administrator, all project objects will be
+            returned along with the role assignments.
 
             Args:
                 userid (str):  userid of a person (Person.id)
@@ -951,6 +953,7 @@ class RepositoryService(ApplicationSession):
             Returns:
                 tuple of lists:  [0] serialized user (Person) object,
                                  [1] serialized RoleAssignment objects
+                                 [3] projects (only for Global Admins)
             """
             orb.log.info('[rpc] vger.get_user_roles({}) ...'.format(userid))
             user = orb.select('Person', id=userid)
@@ -959,9 +962,19 @@ class RepositoryService(ApplicationSession):
                                        assigned_to=user)
                 szd_ras = serialize(orb, ras)
                 szd_user = serialize(orb, [user])
-                return [szd_user, szd_ras]
+                admin_role = orb.get('pgefobjects:Role.Administrator')
+                global_admin = orb.select('RoleAssignment',
+                                          assigned_role=admin_role,
+                                          assigned_to=user,
+                                          role_assignment_context=None)
+                if global_admin:
+                    projects = orb.get_by_type('Project')
+                    szd_projects = serialize(orb, projects)
+                    return [szd_user, szd_ras, szd_projects]
+                else:
+                    return [szd_user, szd_ras, []]
             else:
-                return [[], []]
+                return [[], [], []]
 
         yield self.register(get_user_roles, 'vger.get_user_roles')
 
