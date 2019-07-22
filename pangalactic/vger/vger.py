@@ -177,14 +177,18 @@ class RepositoryService(ApplicationSession):
             user_obj = orb.select('Person', id=userid)
             org_oid = ra_dict.get('role_assignment_context')
             if org_oid:
-                # is user an Administrator for this org?
+                # is user an Administrator for this org or a global Admin?
                 org = orb.get(org_oid)
                 admin_role = orb.get('pgefobjects:Role.Administrator')
                 admin_ra = orb.select('RoleAssignment',
                                       assigned_role=admin_role,
                                       assigned_to=user_obj,
                                       role_assignment_context=org)
-                if admin_ra:
+                global_admin = orb.select('RoleAssignment',
+                                      assigned_role=admin_role,
+                                      assigned_to=user_obj,
+                                      role_assignment_context=None)
+                if admin_ra or global_admin:
                     orb.log.info('  role assignment is authorized, saving ...')
                     output = deserialize(orb, [ra_dict], dictify=True)
                     mod_ra_dts = {}
@@ -958,9 +962,6 @@ class RepositoryService(ApplicationSession):
             orb.log.info('[rpc] vger.get_user_roles({}) ...'.format(userid))
             user = orb.select('Person', id=userid)
             if user:
-                ras = orb.search_exact(cname='RoleAssignment',
-                                       assigned_to=user)
-                szd_ras = serialize(orb, ras)
                 szd_user = serialize(orb, [user])
                 admin_role = orb.get('pgefobjects:Role.Administrator')
                 global_admin = orb.select('RoleAssignment',
@@ -968,10 +969,17 @@ class RepositoryService(ApplicationSession):
                                           assigned_to=user,
                                           role_assignment_context=None)
                 if global_admin:
+                    # return ALL RoleAssignment and Project objects
+                    ras = orb.get_by_type('RoleAssignment')
+                    szd_ras = serialize(orb, ras)
                     projects = orb.get_by_type('Project')
                     szd_projects = serialize(orb, projects)
                     return [szd_user, szd_ras, szd_projects]
                 else:
+                    # return only RoleAssignment objects for this user
+                    ras = orb.search_exact(cname='RoleAssignment',
+                                           assigned_to=user)
+                    szd_ras = serialize(orb, ras)
                     return [szd_user, szd_ras, []]
             else:
                 return [[], [], []]
