@@ -21,7 +21,7 @@ from pangalactic.core                  import (config, state, read_config,
                                                write_config, write_state)
 from pangalactic.core.utils.meta       import uncook_datetime
 from pangalactic.core.access           import get_orgs_with_access
-# from pangalactic.core.access           import get_perms
+from pangalactic.core.access           import get_perms
 from pangalactic.core.mapping          import schema_maps
 from pangalactic.core.serializers      import deserialize, serialize
 from pangalactic.core.uberorb          import orb
@@ -258,6 +258,8 @@ class RepositoryService(ApplicationSession):
             orb.log.info('  caller authid: {}'.format(str(userid)))
             user_obj = orb.select('Person', id=userid)
             user_oid = getattr(user_obj, 'oid', None)
+            # NOTE:  authorizations are mainly "enforced" on the client side
+            # (essentially as suggestions to play nice ...)
             authorized_objs = [so for so in serialized_objs
                                if so.get('creator') == user_oid]
             if not authorized_objs:
@@ -423,6 +425,7 @@ class RepositoryService(ApplicationSession):
             orb.log.info('      actor oid:  {}'.format(str(actor_oid)))
             userid = getattr(cb_details, 'caller_authid', None)
             orb.log.info('      caller authid: {}'.format(str(userid)))
+            user = orb.select('Person', id=userid)
             msg = ''
             actors = []
             if obj_oid:
@@ -442,17 +445,14 @@ class RepositoryService(ApplicationSession):
                                      [obj.oid, obj.id, '', '']})
                         msg = 'object is public; not cloakable'
                         return actors, msg, obj_oid
+                    if 'decloak' not in get_perms(obj, user,
+                                                  config.get('permissive')):
+                        msg = 'user is not authorized to decloak this object'
+                        return actors, msg, obj_oid
                     oas = orb.search_exact(cname='ObjectAccess',
                                            accessible_object=obj)
                     if oas:
                         actors = [getattr(oa.grantee, 'oid', '') for oa in oas]
-                    user = orb.select('Person', id=userid)
-                    # TODO:  use 'get_perms' ... also, allow org Admin to
-                    # decloak any object that is decloaked to their org, to
-                    # (any?) parent org
-                    if not user.oid == obj.creator.oid:
-                        msg = 'user is not authorized to decloak this object'
-                        return actors, msg, obj_oid
                     existing_oa = orb.select('ObjectAccess',
                                              accessible_object=obj,
                                              grantee=actor)
@@ -867,7 +867,8 @@ class RepositoryService(ApplicationSession):
                     object is found, returns an empty list
             """
             orb.log.info('[rpc] vger.get_object({}) ...'.format(oid))
-            # TODO: determine authorization for user
+            # TODO: use get_perms() and ObjectAccess to determine authorization
+            # for user
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
                 # user = orb.select('Person', id=userid)
