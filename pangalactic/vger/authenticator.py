@@ -2,7 +2,6 @@
 Authentication "worker" module for the crossbar server, implementing
 authentication for use with the 'test_vger' testing module.
 """
-from __future__ import print_function
 from pprint import pprint
 
 from twisted.internet.defer import inlineCallbacks
@@ -13,60 +12,60 @@ from autobahn.wamp.exception import ApplicationError
 
 # our principal "database"
 PRINCIPALS_DB = {
-    u'service1': {
-        u'realm': u'pangalactic-services',
-        u'role': u'service',
-        u'ticket': u'789secret'
+    'service1': {
+        'realm': 'pangalactic-services',
+        'role': 'service',
+        'ticket': '789secret'
     },
-    u'service2': {
-        u'realm': u'pangalactic-services',
-        u'role': u'service',
-        u'ticket': u'987secret'
+    'service2': {
+        'realm': 'pangalactic-services',
+        'role': 'service',
+        'ticket': '987secret'
     },
-    u'steve': {
-        u'realm': u'pangalactic-services',
-        u'role': u'user',
-        u'ticket': u'1234'
+    'steve': {
+        'realm': 'pangalactic-services',
+        'role': 'user',
+        'ticket': '1234'
     },
-    u'fester': {
-        u'realm': u'pangalactic-services',
-        u'role': u'user',
-        u'ticket': u'1234'
+    'fester': {
+        'realm': 'pangalactic-services',
+        'role': 'user',
+        'ticket': '1234'
     },
-    u'zaphod': {
-        u'realm': u'pangalactic-services',
-        u'role': u'user',
-        u'ticket': u'1234'
+    'zaphod': {
+        'realm': 'pangalactic-services',
+        'role': 'user',
+        'ticket': '1234'
     },
-    u'buckaroo': {
-        u'realm': u'pangalactic-services',
-        u'role': u'user',
-        u'ticket': u'1234'
+    'buckaroo': {
+        'realm': 'pangalactic-services',
+        'role': 'user',
+        'ticket': '1234'
     },
-    u'whorfin': {
-        u'realm': u'pangalactic-services',
-        u'role': u'user',
-        u'ticket': u'1234'
+    'whorfin': {
+        'realm': 'pangalactic-services',
+        'role': 'user',
+        'ticket': '1234'
     },
-    u'bigboote': {
-        u'realm': u'pangalactic-services',
-        u'role': u'user',
-        u'ticket': u'1234'
+    'bigboote': {
+        'realm': 'pangalactic-services',
+        'role': 'user',
+        'ticket': '1234'
     },
-    u'smallberries': {
-        u'realm': u'pangalactic-services',
-        u'role': u'user',
-        u'ticket': u'1234'
+    'smallberries': {
+        'realm': 'pangalactic-services',
+        'role': 'user',
+        'ticket': '1234'
     },
-    u'thornystick': {
-        u'realm': u'pangalactic-services',
-        u'role': u'user',
-        u'ticket': u'1234'
+    'thornystick': {
+        'realm': 'pangalactic-services',
+        'role': 'user',
+        'ticket': '1234'
     },
-    u'manyjars': {
-        u'realm': u'pangalactic-services',
-        u'role': u'user',
-        u'ticket': u'1234'
+    'manyjars': {
+        'realm': 'pangalactic-services',
+        'role': 'user',
+        'ticket': '1234'
     }
 }
 
@@ -88,19 +87,19 @@ class AuthenticatorSession(ApplicationSession):
                 principal = PRINCIPALS_DB[authid]
 
                 if ticket != principal['ticket']:
-                    raise ApplicationError(u'com.example.invalid_ticket',
+                    raise ApplicationError('com.example.invalid_ticket',
                           "could not authenticate session - "
                           "invalid ticket '{}' for principal {}".format(
                                                             ticket, authid))
-                if realm and realm != principal[u'realm']:
-                    raise ApplicationError(u'com.example_invalid_realm',
+                if realm and realm != principal['realm']:
+                    raise ApplicationError('com.example_invalid_realm',
                             "user {} should join {}, not {}".format(authid,
-                                                principal[u'realm'], realm))
+                                                principal['realm'], realm))
                 res = {
-                    u'realm': principal[u'realm'],
-                    u'role': principal[u'role'],
-                    u'extra': {
-                        u'my-custom-welcome-data': [1, 2, 3]
+                    'realm': principal['realm'],
+                    'role': principal['role'],
+                    'extra': {
+                        'my-custom-welcome-data': [1, 2, 3]
                     }
                 }
                 print("WAMP-Ticket authentication success: {}".format(res))
@@ -110,7 +109,7 @@ class AuthenticatorSession(ApplicationSession):
                                        "could not authenticate session - "
                                        "no such principal {}".format(authid))
         try:
-            yield self.register(authenticate, u'omb.authenticate')
+            yield self.register(authenticate, 'pgef.authenticate')
             print("WAMP-Ticket dynamic authenticator registered!")
         except Exception as e:
             print("Failed to register dynamic authenticator: {0}".format(e))
