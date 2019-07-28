@@ -277,7 +277,7 @@ class RepositoryService(ApplicationSession):
                 orgs = get_orgs_with_access(mod_obj)
                 # if the object does not have a 'public' attr*, it is public
                 # NOTE:  * this includes Acu and ProjectSystemUsage objects
-                if getattr(mod_obj, 'public', True):
+                if not hasattr(mod_obj, 'public'):
                     orb.log.info('   modified object is public -- ')
                     orb.log.info('   publish "modified" on public channel...')
                     channel = 'vger.channel.public'
@@ -285,16 +285,16 @@ class RepositoryService(ApplicationSession):
                 else:
                     if orgs:
                         orb.log.info('   publish "modified" message ...')
+                        for org in orgs:
+                            # publish 'modified' message on relevant channels
+                            org_id = getattr(org, 'id', '')
+                            if org_id:
+                                channel = 'vger.channel.' + str(org_id)
+                            orb.log.info('   + on channel: {}'.format(channel))
+                            self.publish(channel, {'modified': content})
                     else:
                         orb.log.info('   no orgs have access:')
                         orb.log.info('   not publishing "modified" message.')
-                    for org in orgs:
-                        # publish 'modified' message on relevant channels
-                        org_id = getattr(org, 'id', '')
-                        if org_id:
-                            channel = 'vger.channel.' + str(org_id)
-                        orb.log.info('   + on channel: {}'.format(channel))
-                        self.publish(channel, {'modified': content})
                 mod_obj_dts[mod_obj.oid] = str(mod_obj.mod_datetime)
             for new_obj in output['new']:
                 # ** NOTE: no orgs have access to "SANDBOX" project, so that
@@ -302,36 +302,49 @@ class RepositoryService(ApplicationSession):
                 orgs = get_orgs_with_access(new_obj)
                 # if the object does not have a 'public' attr*, it is public
                 # NOTE:  * this includes Acu and ProjectSystemUsage objects
-                if getattr(new_obj, 'public', False):
-                    orb.log.info('   new object is public -- ')
-                    orb.log.info('   publish "decloaked" on public channel...')
-                    channel = 'vger.channel.public'
-                    self.publish(channel, {'decloaked':
-                                     [new_obj.oid, new_obj.id,
-                                      '', '']})
-                elif isinstance(new_obj, orb.classes['ManagedObject']):
+                if isinstance(new_obj, orb.classes['ManagedObject']):
                     # ManagedObject introduces the 'public' flag ...
                     # any new non-public ManagedObject is considered "cloaked"
-                    orb.log.info('   new Managed Object oid: {}'.format(
+                    if new_obj.public:
+                        orb.log.info('   new object is public -- ')
+                        orb.log.info('   publish on public channel...')
+                        self.publish('vger.channel.public', {'decloaked':
+                                         [new_obj.oid, new_obj.id,
+                                          '', '']})
+                    else:
+                        orb.log.info('   new Managed Object oid: {}'.format(
                                                                 new_obj.oid))
-                    orb.log.info('   new object is non-public -- ')
-                    orb.log.info('   not publishing.')
+                        orb.log.info('   new object is non-public -- ')
+                        if orgs:
+                            orb.log.info('   publishing only to auth org(s):')
+                            orb.log.info('   {}'.format(str(
+                                                    [org.id for org in orgs])))
+                            for org in orgs:
+                                # publish 'modified' message
+                                org_id = org.id or ''
+                                if org_id:
+                                    channel = 'vger.channel.' + str(org_id)
+                                orb.log.info('   + on channel: {}'.format(channel))
+                                self.publish(channel, {'modified': content})
+                        else:
+                            orb.log.info('   no orgs have access:')
+                            orb.log.info('   not publishing "modified" message.')
                 elif isinstance(new_obj, (orb.classes['Acu'],
                                           orb.classes['ProjectSystemUsage'])):
                     orb.log.info('   new Acu/PSU oid: {}'.format(new_obj.oid))
                     orb.log.info('                id: {}'.format(new_obj.id))
-                    for org in orgs:
-                        # publish 'decloaked' message
-                        if org.id:
-                            channel = 'vger.channel.' + str(
-                                                          org.id)
-                        else:
-                            channel = 'vger.channel.public'
-                        orb.log.info('   decloak msg on: {}'.format(
-                                                            channel))
-                        self.publish(channel, {'decloaked':
-                                     [new_obj.oid, new_obj.id,
-                                      org.oid, org.id]})
+                    orb.log.info('   decloak msg on: {}'.format(
+                                                        'vger.channel.public'))
+                    self.publish('vger.channel.public',
+                                 {'decloaked': [new_obj.oid, new_obj.id,
+                                                org.oid, org.id]})
+                else:
+                    orb.log.info('   new obj is not ManagedObject, nor Acu,')
+                    orb.log.info('   so it is effectively public -- ')
+                    orb.log.info('   publish "decloaked" on public channel...')
+                    self.publish('vger.channel.public', {'decloaked':
+                                 [new_obj.oid, new_obj.id,
+                                  org.oid, org.id]})
                 new_obj_dts[new_obj.oid] = str(new_obj.mod_datetime)
             return dict(new_obj_dts=new_obj_dts, mod_obj_dts=mod_obj_dts)
 
