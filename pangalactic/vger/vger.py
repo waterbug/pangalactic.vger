@@ -260,12 +260,12 @@ class RepositoryService(ApplicationSession):
             user_oid = getattr(user_obj, 'oid', None)
             # NOTE:  authorizations are mainly "enforced" on the client side
             # (essentially as suggestions to play nice ...)
-            authorized_objs = [so for so in serialized_objs
-                               if so.get('creator') == user_oid]
-            if not authorized_objs:
-                orb.log.info('  called with no authorized objs; returning.')
-                return {'result': 'nothing saved.'}
-            output = deserialize(orb, authorized_objs, dictify=True)
+            # authorized_objs = [so for so in serialized_objs
+                               # if so.get('creator') == user_oid]
+            # if not authorized_objs:
+                # orb.log.info('  called with no authorized objs; returning.')
+                # return {'result': 'nothing saved.'}
+            output = deserialize(orb, serialized_objs, dictify=True)
             mod_obj_dts = {}
             new_obj_dts = {}
             for mod_obj in output['modified']:
@@ -337,14 +337,14 @@ class RepositoryService(ApplicationSession):
                                                         'vger.channel.public'))
                     self.publish('vger.channel.public',
                                  {'decloaked': [new_obj.oid, new_obj.id,
-                                                org.oid, org.id]})
+                                                '', '']})
                 else:
                     orb.log.info('   new obj is not ManagedObject, nor Acu,')
                     orb.log.info('   so it is effectively public -- ')
                     orb.log.info('   publish "decloaked" on public channel...')
                     self.publish('vger.channel.public', {'decloaked':
                                  [new_obj.oid, new_obj.id,
-                                  org.oid, org.id]})
+                                  '', '']})
                 new_obj_dts[new_obj.oid] = str(new_obj.mod_datetime)
             return dict(new_obj_dts=new_obj_dts, mod_obj_dts=mod_obj_dts)
 
@@ -458,10 +458,10 @@ class RepositoryService(ApplicationSession):
                                      [obj.oid, obj.id, '', '']})
                         msg = 'object is public; not cloakable'
                         return actors, msg, obj_oid
-                    if 'decloak' not in get_perms(obj, user,
-                                                  config.get('permissive')):
-                        msg = 'user is not authorized to decloak this object'
-                        return actors, msg, obj_oid
+                    # if 'decloak' not in get_perms(obj, user,
+                                                  # config.get('permissive')):
+                        # msg = 'user is not authorized to decloak this object'
+                        # return actors, msg, obj_oid
                     oas = orb.search_exact(cname='ObjectAccess',
                                            accessible_object=obj)
                     if oas:
