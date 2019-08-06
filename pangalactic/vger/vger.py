@@ -256,9 +256,9 @@ class RepositoryService(ApplicationSession):
             orb.log.info(sobjs_list)
             userid = getattr(cb_details, 'caller_authid', 'unknown')
             orb.log.info('  caller authid: {}'.format(str(userid)))
-            user_obj = orb.select('Person', id=userid)
-            user_oid = getattr(user_obj, 'oid', None)
-            # NOTE:  authorizations are mainly "enforced" on the client side
+            # user_obj = orb.select('Person', id=userid)
+            # user_oid = getattr(user_obj, 'oid', None)
+            # NOTE:  for now, authorizations are "enforced" on the client side
             # (essentially as suggestions to play nice ...)
             # authorized_objs = [so for so in serialized_objs
                                # if so.get('creator') == user_oid]
@@ -375,21 +375,29 @@ class RepositoryService(ApplicationSession):
                           if obj is not None}
             # deletions are authorized only for objs created by this user,
             # except in the case of RoleAssignments ...
-            # NOTE: objects without a 'creator' attribute cannot be deleted ->
-            # only instances of subclasses of 'Modelable' can be deleted.
-            auth_dels = {oid: obj for oid, obj in objs_found.items()
-                         if getattr(obj, 'creator', None) is user}
-            # check for RoleAssignments
+            # NOTE: *Except* for RoleAssignments, objects without a 'creator'
+            # attribute cannot be deleted -> only instances of subclasses of
+            # 'Modelable' can be deleted.
             admin_role = orb.get('pgefobjects:Role.Administrator')
-            for obj in objs_found.values():
-                if isinstance(obj, orb.classes['RoleAssignment']):
-                    # RoleAssignments can only be deleted by an Administrator
-                    # for the Organization in which the Role was assigned
-                    org = obj.role_assignment_context
-                    admin = orb.select('RoleAssignment', assigned_to=user,
-                                       assigned_role=admin_role,
-                                       role_assignment_context=org)
-                    if admin:
+            global_admin = bool(orb.select('RoleAssignment', assigned_to=user,
+                                assigned_role=admin_role,
+                                role_assignment_context=None))
+            if global_admin:
+                auth_dels = objs_found
+            else:
+                auth_dels = {}
+                for obj in objs_found.values():
+                    # first check for RoleAssignments
+                    if isinstance(obj, orb.classes['RoleAssignment']):
+                        # RoleAssignments can only be deleted by an Administrator
+                        # for the Organization in which the Role was assigned
+                        org = obj.role_assignment_context
+                        admin = orb.select('RoleAssignment', assigned_to=user,
+                                           assigned_role=admin_role,
+                                           role_assignment_context=org)
+                        if admin:
+                            auth_dels[obj.oid] = obj
+                    elif getattr(obj, 'creator', None) is user:
                         auth_dels[obj.oid] = obj
             oids_deleted = list(auth_dels.keys())
             orb.delete(auth_dels.values())
@@ -438,7 +446,7 @@ class RepositoryService(ApplicationSession):
             orb.log.info('      actor oid:  {}'.format(str(actor_oid)))
             userid = getattr(cb_details, 'caller_authid', None)
             orb.log.info('      caller authid: {}'.format(str(userid)))
-            user = orb.select('Person', id=userid)
+            # user = orb.select('Person', id=userid)
             msg = ''
             actors = []
             if obj_oid:
