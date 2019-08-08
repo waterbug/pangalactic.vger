@@ -110,7 +110,7 @@ def search_ldap_directory(ldap_url, base_dn, test=None, **kw):
     ldap_required_fields = config.get('ldap_required_fields')
     orb.log.info('  ldap_required_fields = {}'.format(ldap_required_fields))
     if schema and ldap_required_fields:
-        f = ldap_required_fields
+        f = ''
         valid_fields = {schema[a]:a for a in schema}
         if kw and valid_fields:
             valid_values = [(valid_fields.get(a), kw[a])
@@ -118,6 +118,7 @@ def search_ldap_directory(ldap_url, base_dn, test=None, **kw):
                             if a in valid_fields]
             for ldap_field, value in valid_values:
                 f += '({}={})'.format(ldap_field, value)
+        f += ldap_required_fields
     else:
         # don't do the search if we didn't get kw args or don't have a schema
         return []
