@@ -869,7 +869,7 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_version, 'vger.get_version')
 
-        def get_object(oid, include_components=False, cb_details=None):
+        def get_object(oid, include_components=True, cb_details=None):
             """
             Retrieve the pangalactic object with the specified oid. 
 
