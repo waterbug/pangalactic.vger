@@ -277,7 +277,8 @@ class RepositoryService(ApplicationSession):
                 orgs = get_orgs_with_access(mod_obj)
                 # if the object does not have a 'public' attr*, it is public
                 # NOTE:  * this includes Acu and ProjectSystemUsage objects
-                if not hasattr(mod_obj, 'public'):
+                if (not hasattr(mod_obj, 'public') or
+                    getattr(mod_obj, 'public', False)):
                     orb.log.info('   modified object is public -- ')
                     orb.log.info('   publish "modified" on public channel...')
                     channel = 'vger.channel.public'
@@ -294,7 +295,8 @@ class RepositoryService(ApplicationSession):
                             self.publish(channel, {'modified': content})
                     else:
                         orb.log.info('   no orgs have access:')
-                        orb.log.info('   not publishing "modified" message.')
+                        orb.log.info(
+                            '   not publishing "modified" on org channels.')
                 mod_obj_dts[mod_obj.oid] = str(mod_obj.mod_datetime)
             for new_obj in output['new']:
                 # ** NOTE: no orgs have access to "SANDBOX" project, so that
@@ -398,6 +400,8 @@ class RepositoryService(ApplicationSession):
                         if admin:
                             auth_dels[obj.oid] = obj
                     elif getattr(obj, 'creator', None) is user:
+                        auth_dels[obj.oid] = obj
+                    elif 'delete' in get_perms(obj, user=user):
                         auth_dels[obj.oid] = obj
             oids_deleted = list(auth_dels.keys())
             orb.delete(auth_dels.values())
