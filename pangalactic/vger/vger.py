@@ -416,11 +416,12 @@ class RepositoryService(ApplicationSession):
 
         def decloak(obj_oid, actor_oid, cb_details=None):
             """
-            Decloak a ManagedObject in the repository to the specified actor
-            (usually an Organization or Project) and publish a message to the
-            relevant actor channel.  (In some contexts, 'decloak' is referred
-            to as 'release' or 'publish'.  'decloak' is chosen here since it is
-            free of semantic baggage, relative to those other possible terms.)
+            Decloak a ManagedObject in the repository to the Organization or
+            Project that is its 'owner' and publish a message to the relevant
+            actor channel.  (In some contexts, 'decloak' is referred to as
+            'release' or 'publish'.  'decloak' is chosen here since it is free
+            of semantic baggage, or at least more so than those other possible
+            terms.)
 
             In terms of the PGEF standard message structures, 'decloaked' is
             the 'subject' of the published message and an `(object_oid,
@@ -447,44 +448,40 @@ class RepositoryService(ApplicationSession):
             #                     i.e. is user the creator (or admin?)
             orb.log.info('[rpc] vger.decloak() ...')
             orb.log.info('      object oid: {}'.format(str(obj_oid)))
-            orb.log.info('      actor oid:  {}'.format(str(actor_oid)))
+            orb.log.info('      actor_oid:  {}'.format(str(actor_oid)))
             userid = getattr(cb_details, 'caller_authid', None)
             orb.log.info('      caller authid: {}'.format(str(userid)))
-            # user = orb.select('Person', id=userid)
+            user = orb.select('Person', id=userid)
             msg = ''
             actors = []
             if obj_oid:
-                if actor_oid:
-                    actor = orb.get(actor_oid)
-                    if not actor:
-                        msg = 'actor not found'
-                        return actors, msg, obj_oid
                 obj = orb.get(obj_oid)
                 if obj:
-                    if not isinstance(obj, orb.classes['ManagedObject']):
-                        msg = 'object is not a Managed Object; not cloakable'
-                        return actors, msg, obj_oid
-                    if obj.public:
+                    # if not isinstance(obj, orb.classes['ManagedObject']):
+                        # msg = 'object is not a Managed Object; not cloakable'
+                        # return actors, msg, obj_oid
+                    if getattr(obj, 'public', True):
                         channel = 'vger.channel.public'
                         self.publish(channel, {'decloaked':
                                      [obj.oid, obj.id, '', '']})
-                        msg = 'object is public; not cloakable'
+                        msg = 'object is already public; not cloakable'
                         return actors, msg, obj_oid
-                    # if 'decloak' not in get_perms(obj, user,
-                                                  # config.get('permissive')):
-                        # msg = 'user is not authorized to decloak this object'
-                        # return actors, msg, obj_oid
+                    if 'decloak' not in get_perms(obj, user,
+                                                  config.get('permissive')):
+                        msg = 'user is not authorized to decloak this object'
+                        return actors, msg, obj_oid
                     oas = orb.search_exact(cname='ObjectAccess',
                                            accessible_object=obj)
                     if oas:
                         actors = [getattr(oa.grantee, 'oid', '') for oa in oas]
+                    actor = getattr(obj, 'owner', None)
                     existing_oa = orb.select('ObjectAccess',
                                              accessible_object=obj,
                                              grantee=actor)
                     if existing_oa:
-                        msg = 'object was already_decloaked to this actor'
+                        msg = 'object was already_decloaked'
                         return actors, msg, obj_oid
-                    else:
+                    elif actor:
                         ObjectAccess = orb.classes['ObjectAccess']
                         dts = dtstamp()
                         new_oid = str(uuid4())
@@ -501,6 +498,9 @@ class RepositoryService(ApplicationSession):
                         self.publish(channel, {'decloaked':
                                      [obj.oid, obj.id, actor.oid, actor.id]})
                         actors.append(actor_oid)
+                        return actors, msg, obj_oid
+                    else:
+                        msg = 'object has no owner; could not decloak'
                         return actors, msg, obj_oid
                 else:
                     msg = 'object not found'
