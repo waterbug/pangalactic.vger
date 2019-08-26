@@ -275,10 +275,13 @@ class RepositoryService(ApplicationSession):
                            str(mod_obj.mod_datetime))
                 # determine who has access to the object
                 orgs = get_orgs_with_access(mod_obj)
-                # if the object does not have a 'public' attr*, it is public
-                # NOTE:  * this includes Acu and ProjectSystemUsage objects
-                if (not hasattr(mod_obj, 'public') or
-                    getattr(mod_obj, 'public', False)):
+                # if the object has a public attr set to True or does not have
+                # a 'public' attr*, it is public unless it is a SANDBOX PSU.
+                # NOTE:  * this includes Acu and non-SANDBOX PSU objects
+                if ((not hasattr(mod_obj, 'public') or
+                     getattr(mod_obj, 'public', False)) and
+                     not (hasattr(mod_obj, 'project') and
+                          getattr(mod_obj.project, 'id', '') == 'SANDBOX')):
                     orb.log.info('   modified object is public -- ')
                     orb.log.info('   publish "modified" on public channel...')
                     channel = 'vger.channel.public'
@@ -326,13 +329,16 @@ class RepositoryService(ApplicationSession):
                                 org_id = org.id or ''
                                 if org_id:
                                     channel = 'vger.channel.' + str(org_id)
-                                orb.log.info('   + on channel: {}'.format(channel))
+                                orb.log.info('   + on channel: {}'.format(
+                                                                    channel))
                                 self.publish(channel, {'modified': content})
                         else:
                             orb.log.info('   no orgs have access:')
-                            orb.log.info('   not publishing "modified" message.')
-                elif isinstance(new_obj, (orb.classes['Acu'],
-                                          orb.classes['ProjectSystemUsage'])):
+                            orb.log.info('   not publishing "modified" msg.')
+                elif (isinstance(new_obj, (orb.classes['Acu'],
+                                          orb.classes['ProjectSystemUsage']))
+                      and not (hasattr(new_obj, 'project') and
+                               getattr(new_obj.project, 'id', '') == 'SANDBOX')):
                     orb.log.info('   new Acu/PSU oid: {}'.format(new_obj.oid))
                     orb.log.info('                id: {}'.format(new_obj.id))
                     orb.log.info('   decloak msg on: {}'.format(
@@ -340,9 +346,10 @@ class RepositoryService(ApplicationSession):
                     self.publish('vger.channel.public',
                                  {'decloaked': [new_obj.oid, new_obj.id,
                                                 '', '']})
-                else:
-                    orb.log.info('   new obj is not ManagedObject, nor Acu,')
-                    orb.log.info('   so it is effectively public -- ')
+                elif not (hasattr(new_obj, 'project') and
+                          getattr(new_obj.project, 'id', '') == 'SANDBOX'):
+                    orb.log.info('   new obj not ManagedObject, Acu,')
+                    orb.log.info('   or SANDBOX PSU, so it is public -- ')
                     orb.log.info('   publish "decloaked" on public channel...')
                     self.publish('vger.channel.public', {'decloaked':
                                  [new_obj.oid, new_obj.id,
@@ -399,6 +406,11 @@ class RepositoryService(ApplicationSession):
                                            role_assignment_context=org)
                         if admin:
                             auth_dels[obj.oid] = obj
+                    # next, SANDBOX PSUs
+                    elif (hasattr(obj, 'project') and
+                          getattr(obj.project, 'id', '') == 'SANDBOX'):
+                        # if SANDBOX PSU, delete but don't publish
+                        orb.delete([obj])
                     elif getattr(obj, 'creator', None) is user:
                         auth_dels[obj.oid] = obj
                     elif 'delete' in get_perms(obj, user=user):
