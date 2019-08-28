@@ -20,8 +20,7 @@ from pangalactic.core                  import __version__
 from pangalactic.core                  import (config, state, read_config,
                                                write_config, write_state)
 from pangalactic.core.utils.meta       import uncook_datetime
-from pangalactic.core.access           import get_orgs_with_access
-from pangalactic.core.access           import get_perms
+from pangalactic.core.access           import get_perms, is_cloaked
 from pangalactic.core.mapping          import schema_maps
 from pangalactic.core.serializers      import deserialize, serialize
 from pangalactic.core.uberorb          import orb
@@ -193,7 +192,6 @@ class RepositoryService(ApplicationSession):
                     output = deserialize(orb, [ra_dict], dictify=True)
                     mod_ra_dts = {}
                     new_ra_dts = {}
-                    new_ras = {}
                     for mod_ra in output['modified']:
                         orb.log.info('   modified ra oid: {}'.format(
                                                                 mod_ra.oid))
@@ -210,12 +208,11 @@ class RepositoryService(ApplicationSession):
                         orb.log.info('   new ra oid: {}'.format(new_ra.oid))
                         orb.log.info('           id: {}'.format(new_ra.id))
                         new_ra_dts[new_ra.oid] = str(new_ra.mod_datetime)
-                        new_ras[new_ra.oid] = new_ra.id
-                    if new_ras:
-                        log_msg = 'publishing new ras on public channel.'
+                        log_msg = 'new ra {} on public channel.'.format(
+                                                                new_ra.id)
                         orb.log.info('   {}'.format(log_msg))
-                        self.publish('vger.channel.public',
-                                     {'decloaked': [new_ras, '', '']})
+                        self.publish('vger.channel.public', {'decloaked':
+                                     [new_ra.oid, new_ra.id, '', '']})
                     return dict(new_obj_dts=new_ra_dts, mod_obj_dts=mod_ra_dts)
                 else:
                     orb.log.info('  role assignment not authorized.')
@@ -279,13 +276,10 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('                    id: {}'.format(mod_obj.id))
                 content = (mod_obj.oid, mod_obj.id,
                            str(mod_obj.mod_datetime))
-                # determine who has access to the object
-                orgs = get_orgs_with_access(mod_obj)
                 # if the object has a public attr set to True or does not have
                 # a 'public' attr*, it is public unless it is a SANDBOX PSU.
                 # NOTE:  * this includes Acu and non-SANDBOX PSU objects
-                if ((not hasattr(mod_obj, 'public') or
-                     getattr(mod_obj, 'public', False)) and
+                if ((getattr(mod_obj, 'public', True)) and
                      not (hasattr(mod_obj, 'project') and
                           getattr(mod_obj.project, 'id', '') == 'SANDBOX')):
                     orb.log.info('   modified object is public -- ')
@@ -293,29 +287,30 @@ class RepositoryService(ApplicationSession):
                     channel = 'vger.channel.public'
                     self.publish(channel, {'modified': content})
                 else:
-                    if orgs:
-                        orb.log.info('   publish "modified" message ...')
-                        for org in orgs:
-                            # publish 'modified' message on relevant channels
-                            org_id = getattr(org, 'id', '')
-                            if org_id:
-                                channel = 'vger.channel.' + str(org_id)
-                            orb.log.info('   + on channel: {}'.format(channel))
-                            self.publish(channel, {'modified': content})
-                    else:
-                        orb.log.info('   no orgs have access:')
+                    if is_cloaked(mod_obj):
+                        orb.log.info('   cloaked: no orgs have access:')
                         orb.log.info(
                             '   not publishing "modified" on org channels.')
+                    else:
+                        # if decloaked, publish 'modified' message on owner
+                        # channel; if owner is None/empty, use 'public' channel
+                        owner_id = getattr(mod_obj.owner, 'id',
+                                           'public') or 'public'
+                        log_msg = 'decloaked: publish "modified" on owner or '
+                        log_msg += 'public channel "{}" ...'.format(owner_id)
+                        orb.log.info('   {}'.format(log_msg))
+                        if owner_id:
+                            channel = 'vger.channel.' + owner_id
+                        orb.log.info('   + on channel: {}'.format(channel))
+                        self.publish(channel, {'modified': content})
                 mod_obj_dts[mod_obj.oid] = str(mod_obj.mod_datetime)
             for new_obj in output['new']:
-                # ** NOTE: no orgs have access to "SANDBOX" project, so that
-                # prevents SANDBOX PSUs from being decloaked
-                orgs = get_orgs_with_access(new_obj)
-                # if the object does not have a 'public' attr*, it is public
-                # NOTE:  * this includes Acu and ProjectSystemUsage objects
+                # ** NOTE: is_cloaked() always returns True for SANDBOX PSUs.
+                # If an object does not have a 'public' attr*, it is public*
+                # NOTE:  * Acu and ProjectSystemUsage objects are not public
+                # but oids of new ones are published on 'public' channel ...
                 if isinstance(new_obj, orb.classes['ManagedObject']):
                     # ManagedObject introduces the 'public' flag ...
-                    # any new non-public ManagedObject is considered "cloaked"
                     if new_obj.public:
                         orb.log.info('   new object is public -- ')
                         orb.log.info('   publish on public channel...')
@@ -324,25 +319,22 @@ class RepositoryService(ApplicationSession):
                         orb.log.info('   new Managed Object oid: {}'.format(
                                                                 new_obj.oid))
                         orb.log.info('   new object is non-public -- ')
-                        if orgs:
-                            orb.log.info('   publishing only to auth org(s):')
-                            orb.log.info('   {}'.format(str(
-                                                    [org.id for org in orgs])))
-                            for org in orgs:
-                                # add new_obj to objs to be published on org
-                                # channel ...
-                                org_id = org.id or ''
-                                if org_id:
-                                    if not org_id in new_objs:
-                                        new_objs[org_id] = {}
-                                    new_objs[org_id][new_obj.oid] = new_obj.id
-                        else:
-                            orb.log.info('   no orgs have access to obj:')
+                        if is_cloaked(new_obj):
+                            orb.log.info('   obj is cloaked ...')
                             orb.log.info('   not publishing "decloaked" msg.')
+                        else:
+                            org_id = new_obj.owner.id
+                            orb.log.info('   publishing only to owner org:')
+                            orb.log.info('   {}'.format(org_id ))
+                            if not org_id in new_objs:
+                                new_objs[org_id] = {}
+                            new_objs[org_id][new_obj.oid] = new_obj.id
                 elif (isinstance(new_obj, (orb.classes['Acu'],
                                           orb.classes['ProjectSystemUsage']))
                       and not (hasattr(new_obj, 'project') and
                                getattr(new_obj.project, 'id', '') == 'SANDBOX')):
+                    # NOTE:  * ProjectSystemUsage objects are announced if NOT
+                    # in SANDBOX project ...
                     orb.log.info('   new Acu/PSU oid: {}'.format(new_obj.oid))
                     orb.log.info('                id: {}'.format(new_obj.id))
                     orb.log.info('   (will decloak on public channel)')
@@ -353,22 +345,23 @@ class RepositoryService(ApplicationSession):
                     orb.log.info('   or SANDBOX PSU, so it is public -- ')
                     new_objs['public'][new_obj.oid] = new_obj.id
                 new_obj_dts[new_obj.oid] = str(new_obj.mod_datetime)
-            # publish stuff here ...
+            # publish "decloaked" messages for new objects here ...
             for org_id in new_objs:
                 if org_id == 'public' and new_objs['public']:
                     # publish decloaked for new public objs on public channel
-                    msg = 'publishing "decloaked" on public channel...'
-                    orb.log.info('   + {}'.format(msg))
-                    self.publish('vger.channel.public',
-                                 {'decloaked': [new_objs['public'], '', '']})
+                    txt = 'publishing decloaked items on public channel...'
+                    orb.log.info('   + {}'.format(txt))
+                    for obj_oid, obj_id in new_objs['public'].items():
+                        self.publish('vger.channel.public',
+                                     {'decloaked': [obj_oid, obj_id, '', '']})
                 else:
-                    # publish decloaked on org channel
+                    # if not public, publish decloaked on owner org channel
                     channel = 'vger.channel.' + org_id
-                    msg = 'publishing "decloaked" on channel "{}" ...'.format(
-                                                                      channel)
-                    orb.log.info('   + {}'.format(msg))
-                    self.publish(channel,
-                                 {'decloaked': [new_objs[org_id], '', '']})
+                    txt = 'publishing decloaked on channel "{}" ...'
+                    orb.log.info('   + {}'.format(txt.format(channel)))
+                    for obj_oid, obj_id in new_objs[org_id].items():
+                        self.publish(channel,
+                                 {'decloaked': [obj_oid, obj_id, '', '']})
             return dict(new_obj_dts=new_obj_dts, mod_obj_dts=mod_obj_dts)
 
         yield self.register(save, 'vger.save',
@@ -450,8 +443,8 @@ class RepositoryService(ApplicationSession):
             terms.)
 
             In terms of the PGEF standard message structures, 'decloaked' is
-            the 'subject' of the published message and the `(oid_id_dict,
-            actor_oid, actor_id)` tuple is the 'content'.
+            the 'subject' of the published message and the
+            `(obj_oid, obj_id, actor_oid, actor_id)` tuple is the 'content'.
 
             Args:
                 obj_oid:   oid of the Product to be decloaked
@@ -522,7 +515,7 @@ class RepositoryService(ApplicationSession):
                         channel = 'vger.channel.' + str(
                                         getattr(actor, 'id', 'public'))
                         self.publish(channel, {'decloaked':
-                                     [{obj.oid: obj.id}, actor.oid, actor.id]})
+                                     [obj.oid, obj.id, actor.oid, actor.id]})
                         actors.append(actor_oid)
                         return actors, msg, obj_oid
                     else:
@@ -935,41 +928,41 @@ class RepositoryService(ApplicationSession):
         yield self.register(get_object, 'vger.get_object',
                             RegisterOptions(details_arg='cb_details'))
 
-        def get_objects(oids, include_components=True, cb_details=None):
-            """
-            Retrieve the pangalactic objects with the specified oids.
+        # def get_objects(oids, include_components=True, cb_details=None):
+            # """
+            # Retrieve the pangalactic objects with the specified oids.
 
-            Args:
-                oids (list):  object oids
+            # Args:
+                # oids (list):  object oids
 
-            Keyword Args:
-                include_components (bool):  if True, components (items linked by
-                    Acu relationships) will be included in the serialization --
-                    i.e., a "white box" representation
-                cb_details:  added by crossbar; not included in rpc signature
+            # Keyword Args:
+                # include_components (bool):  if True, components (items linked by
+                    # Acu relationships) will be included in the serialization --
+                    # i.e., a "white box" representation
+                # cb_details:  added by crossbar; not included in rpc signature
 
-            Returns:
-                list of dict:  A serialization of the objects with the oids --
-                    this will be a list that may include related objects. If no
-                    object is found, returns an empty list
-            """
-            orb.log.info('[rpc] vger.get_objects({}) ...'.format(oids))
-            # TODO: use get_perms() and ObjectAccess to determine authorization
-            # for user
-            # userid = getattr(cb_details, 'caller_authid', '')
-            # if userid:
-                # user = orb.select('Person', id=userid)
-            objs = orb.get(oids=oids)
-            if objs:
-                # TODO:  if include_components is True, get_perms() should be
-                # used to determine the user's access to the components ...
-                return serialize(orb, objs,
-                                 include_components=include_components)
-            else:
-                return []
+            # Returns:
+                # list of dict:  A serialization of the objects with the oids --
+                    # this will be a list that may include related objects. If no
+                    # object is found, returns an empty list
+            # """
+            # orb.log.info('[rpc] vger.get_objects({}) ...'.format(oids))
+            # # TODO: use get_perms() and ObjectAccess to determine authorization
+            # # for user
+            # # userid = getattr(cb_details, 'caller_authid', '')
+            # # if userid:
+                # # user = orb.select('Person', id=userid)
+            # objs = orb.get(oids=oids)
+            # if objs:
+                # # TODO:  if include_components is True, get_perms() should be
+                # # used to determine the user's access to the components ...
+                # return serialize(orb, objs,
+                                 # include_components=include_components)
+            # else:
+                # return []
 
-        yield self.register(get_objects, 'vger.get_objects',
-                            RegisterOptions(details_arg='cb_details'))
+        # yield self.register(get_objects, 'vger.get_objects',
+                            # RegisterOptions(details_arg='cb_details'))
 
         def get_mod_dts(cname=None, oids=None):
             """
