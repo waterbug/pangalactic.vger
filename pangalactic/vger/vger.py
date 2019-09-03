@@ -94,8 +94,11 @@ class RepositoryService(ApplicationSession):
                         data = f.read()
                         sobjs = yaml.safe_load(data)
                         try:
-                            deserialize(orb, sobjs)
+                            objs = deserialize(orb, sobjs)
                             orb.log.info('         success.')
+                            ids = [o.id for o in objs]
+                            orb.log.info('         loaded: {}'.format(
+                                                                str(ids)))
                         except:
                             orb.log.info('         deserialize() failed.')
 
