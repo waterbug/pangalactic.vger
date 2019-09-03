@@ -6,6 +6,8 @@ The Virtual Galactic Entropy Reverser
 import argparse, atexit, json, os, six, sys
 from uuid import uuid4
 
+import ruamel_yaml as yaml
+
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet._sslverify import OpenSSLCertificateAuthorities
 from twisted.internet.ssl import CertificateOptions
@@ -81,6 +83,21 @@ class RepositoryService(ApplicationSession):
                 orb.assign_test_parameters(hw)
                 state['test_project_loaded'] = True
             write_state(os.path.join(orb.home, 'state'))
+        if config.get('load_extra_data'):
+            orb.log.info('* [vger] "load_extra_data" set, checking ...')
+            for fname in config['load_extra_data']:
+                if os.path.exists(os.path.join(orb.home, fname)):
+                    orb.log.info('         found "{}", loading ...'.format(
+                                                                    fname))
+                    fpath = os.path.join(orb.home, fname)
+                    with open(fpath) as f:
+                        data = f.read()
+                        sobjs = yaml.safe_load(data)
+                        try:
+                            deserialize(orb, sobjs)
+                            orb.log.info('         success.')
+                        except:
+                            orb.log.info('         deserialize() failed.')
 
     def shutdown(self):
         """
@@ -1038,7 +1055,8 @@ class RepositoryService(ApplicationSession):
             Returns:
                 tuple of lists:  [0] serialized user (Person) object,
                                  [1] serialized RoleAssignment objects
-                                 [3] projects (only for Global Admins)
+                                 [3] serialized organizations/projects"
+                                     *only if user is a Global Admin
             """
             orb.log.info('[rpc] vger.get_user_roles({}) ...'.format(userid))
             user = orb.select('Person', id=userid)
@@ -1050,12 +1068,12 @@ class RepositoryService(ApplicationSession):
                                           assigned_to=user,
                                           role_assignment_context=None)
                 if global_admin:
-                    # return ALL RoleAssignment and Project objects
+                    # return ALL RoleAssignment and Organization/Project objects
                     ras = orb.get_by_type('RoleAssignment')
                     szd_ras = serialize(orb, ras)
-                    projects = orb.get_by_type('Project')
-                    szd_projects = serialize(orb, projects)
-                    return [szd_user, szd_ras, szd_projects]
+                    orgs = orb.get_all_subtypes('Organization')
+                    szd_orgs = serialize(orb, orgs)
+                    return [szd_user, szd_ras, szd_orgs]
                 else:
                     # return only RoleAssignment objects for this user
                     ras = orb.search_exact(cname='RoleAssignment',
