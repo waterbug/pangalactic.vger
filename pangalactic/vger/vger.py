@@ -96,9 +96,13 @@ class RepositoryService(ApplicationSession):
                         try:
                             objs = deserialize(orb, sobjs)
                             orb.log.info('         success.')
-                            ids = [o.id for o in objs]
-                            orb.log.info('         loaded: {}'.format(
+                            if objs:
+                                ids = [o.id for o in objs]
+                                orb.log.info('         loaded: {}'.format(
                                                                 str(ids)))
+                            else:
+                                msg = '0 new or modified objs in data.'
+                                orb.log.info('         {}'.format(msg))
                         except:
                             orb.log.info('         deserialize() failed.')
 
