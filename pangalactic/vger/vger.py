@@ -952,41 +952,43 @@ class RepositoryService(ApplicationSession):
         yield self.register(get_object, 'vger.get_object',
                             RegisterOptions(details_arg='cb_details'))
 
-        # def get_objects(oids, include_components=True, cb_details=None):
-            # """
-            # Retrieve the pangalactic objects with the specified oids.
+        # NOTE: get_objects() is not currently used for anything but may be in
+        # the future
+        def get_objects(oids, include_components=True, cb_details=None):
+            """
+            Retrieve the pangalactic objects with the specified oids.
 
-            # Args:
-                # oids (list):  object oids
+            Args:
+                oids (list):  object oids
 
-            # Keyword Args:
-                # include_components (bool):  if True, components (items linked by
-                    # Acu relationships) will be included in the serialization --
-                    # i.e., a "white box" representation
-                # cb_details:  added by crossbar; not included in rpc signature
+            Keyword Args:
+                include_components (bool):  if True, components (items linked by
+                    Acu relationships) will be included in the serialization --
+                    i.e., a "white box" representation
+                cb_details:  added by crossbar; not included in rpc signature
 
-            # Returns:
-                # list of dict:  A serialization of the objects with the oids --
-                    # this will be a list that may include related objects. If no
-                    # object is found, returns an empty list
-            # """
-            # orb.log.info('[rpc] vger.get_objects({}) ...'.format(oids))
-            # # TODO: use get_perms() and ObjectAccess to determine authorization
-            # # for user
-            # # userid = getattr(cb_details, 'caller_authid', '')
-            # # if userid:
-                # # user = orb.select('Person', id=userid)
-            # objs = orb.get(oids=oids)
-            # if objs:
-                # # TODO:  if include_components is True, get_perms() should be
-                # # used to determine the user's access to the components ...
-                # return serialize(orb, objs,
-                                 # include_components=include_components)
-            # else:
-                # return []
+            Returns:
+                list of dict:  A serialization of the objects with the oids --
+                    this will be a list that may include related objects. If no
+                    object is found, returns an empty list
+            """
+            orb.log.info('[rpc] vger.get_objects({}) ...'.format(oids))
+            # TODO: use get_perms() and ObjectAccess to determine authorization
+            # for user
+            # userid = getattr(cb_details, 'caller_authid', '')
+            # if userid:
+                # user = orb.select('Person', id=userid)
+            objs = orb.get(oids=oids)
+            if objs:
+                # TODO:  if include_components is True, get_perms() should be
+                # used to determine the user's access to the components ...
+                return serialize(orb, objs,
+                                 include_components=include_components)
+            else:
+                return []
 
-        # yield self.register(get_objects, 'vger.get_objects',
-                            # RegisterOptions(details_arg='cb_details'))
+        yield self.register(get_objects, 'vger.get_objects',
+                            RegisterOptions(details_arg='cb_details'))
 
         def get_mod_dts(cname=None, oids=None):
             """
@@ -1050,11 +1052,12 @@ class RepositoryService(ApplicationSession):
 
         def get_user_roles(userid):
             """
-            Get the RoleAssignment objects that have the user with the
-            specified userid as their 'assigned_to' (Person) attribute,
-            and return the serialized user (Person) and RoleAssignment objects.
-            If the user is a Global Administrator, all project objects will be
-            returned along with the role assignments.
+            Get all Organizations and the RoleAssignment objects that have the
+            user with the specified userid as their 'assigned_to' (Person)
+            attribute, and return the serialized user (Person) and
+            RoleAssignment objects.  If the user is a Global Administrator, all
+            project objects will also be returned along with the role
+            assignments.
 
             Args:
                 userid (str):  userid of a person (Person.id)
@@ -1062,8 +1065,7 @@ class RepositoryService(ApplicationSession):
             Returns:
                 tuple of lists:  [0] serialized user (Person) object,
                                  [1] serialized RoleAssignment objects
-                                 [3] serialized organizations/projects"
-                                     *only if user is a Global Admin
+                                 [3] serialized organizations/projects
             """
             orb.log.info('[rpc] vger.get_user_roles({}) ...'.format(userid))
             user = orb.select('Person', id=userid)
@@ -1078,6 +1080,7 @@ class RepositoryService(ApplicationSession):
                     # return ALL RoleAssignment and Organization/Project objects
                     ras = orb.get_by_type('RoleAssignment')
                     szd_ras = serialize(orb, ras)
+                    # global_admin: get all Organizations *and* Projects
                     orgs = orb.get_all_subtypes('Organization')
                     szd_orgs = serialize(orb, orgs)
                     return [szd_user, szd_ras, szd_orgs]
@@ -1086,7 +1089,10 @@ class RepositoryService(ApplicationSession):
                     ras = orb.search_exact(cname='RoleAssignment',
                                            assigned_to=user)
                     szd_ras = serialize(orb, ras)
-                    return [szd_user, szd_ras, []]
+                    # NOT global_admin: get all Organizations (not Projects)
+                    orgs = orb.get_by_type('Organization')
+                    szd_orgs = serialize(orb, orgs)
+                    return [szd_user, szd_ras, szd_orgs]
             else:
                 return [[], [], []]
 
