@@ -1247,6 +1247,20 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(add_person, 'vger.add_person')
 
+        def get_people():
+            """
+            Get all Person objects.
+
+            Returns:
+                objs (list of dict):  if successful, a list containing
+                    the serialized Person objects.
+            """
+            orb.log.info('[rpc] vger.get_people')
+            people = orb.get_by_type('Person')
+            return serialize(orb, people)
+
+        yield self.register(get_people, 'vger.get_people')
+
         ###### json procedures: call the rpc and json.dump the output
         ###### (for use with crossbar's "REST Bridge")
 
