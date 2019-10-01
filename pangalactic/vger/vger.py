@@ -1052,47 +1052,33 @@ class RepositoryService(ApplicationSession):
 
         def get_user_roles(userid):
             """
-            Get all Organizations and the RoleAssignment objects that have the
-            user with the specified userid as their 'assigned_to' (Person)
-            attribute, and return the serialized user (Person) and
-            RoleAssignment objects.  If the user is a Global Administrator, all
-            project objects will also be returned along with the role
-            assignments.
+            Get [0] the Person object that corresponds to the userid, [1] all
+            Organization and Project objects, [2] all Person objects, and [3]
+            all RoleAssignment objects.
 
             Args:
                 userid (str):  userid of a person (Person.id)
 
             Returns:
                 tuple of lists:  [0] serialized user (Person) object,
-                                 [1] serialized RoleAssignment objects
-                                 [3] serialized organizations/projects
+                                 [1] serialized Organizations/Projects
+                                 [2] serialized Person objects
+                                 [3] serialized RoleAssignment objects
             """
             orb.log.info('[rpc] vger.get_user_roles({}) ...'.format(userid))
             user = orb.select('Person', id=userid)
             if user:
                 szd_user = serialize(orb, [user])
-                admin_role = orb.get('pgefobjects:Role.Administrator')
-                global_admin = orb.select('RoleAssignment',
-                                          assigned_role=admin_role,
-                                          assigned_to=user,
-                                          role_assignment_context=None)
-                if global_admin:
-                    # return ALL RoleAssignment and Organization/Project objects
-                    ras = orb.get_by_type('RoleAssignment')
-                    szd_ras = serialize(orb, ras)
-                    # global_admin: get all Organizations *and* Projects
-                    orgs = orb.get_all_subtypes('Organization')
-                    szd_orgs = serialize(orb, orgs)
-                    return [szd_user, szd_ras, szd_orgs]
-                else:
-                    # return only RoleAssignment objects for this user
-                    ras = orb.search_exact(cname='RoleAssignment',
-                                           assigned_to=user)
-                    szd_ras = serialize(orb, ras)
-                    # NOT global_admin: get all Organizations (not Projects)
-                    orgs = orb.get_by_type('Organization')
-                    szd_orgs = serialize(orb, orgs)
-                    return [szd_user, szd_ras, szd_orgs]
+                # all Organizations *and* Projects
+                orgs = orb.get_all_subtypes('Organization')
+                szd_orgs = serialize(orb, orgs)
+                # all Person objects
+                people = orb.get_by_type('Person')
+                szd_people = serialize(orb, people)
+                # all RoleAssignment objects
+                ras = orb.get_by_type('RoleAssignment')
+                szd_ras = serialize(orb, ras)
+                return [szd_user, szd_orgs, szd_people, szd_ras]
             else:
                 return [[], [], []]
 
