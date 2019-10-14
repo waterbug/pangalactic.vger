@@ -727,10 +727,16 @@ class RepositoryService(ApplicationSession):
 
         def sync_library_objects(data, cb_details=None):
             """
-            Sync all objects to which the user has access.  (NOTE:
-            `sync_objects()` should be called first with the user's local
-            objects, so that any objects the user created since their last
-            login will be added to the server.)
+            Sync all instances of ManagedObject* to which the user has access.
+            (NOTE: `sync_objects()` should be called first with the user's
+            local objects, so that any objects the user created since their
+            last login will be added to the server.)
+
+            NOTE:  the use of the keyword arg 'public' in orb.search_exact()
+            implies that only instances of ManagedObject and its subclasses
+            (Product, Template, etc.) will be returned.  Note also that this
+            means Ports and PortTemplates libraries will not be synced, since
+            they are not ManagedObjects.
 
             Args:
                 data (dict):  dict {oid: str(mod_datetime)}
@@ -1007,50 +1013,7 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_object, 'vger.get_mod_dts')
 
-        # OLD CODE for get_role_assignments ... (was for OMB-compatibility)
-        def get_role_assignments(userid, **kw):
-            """
-            Retrieves the RoleAssignment objects for the specified userid.
-
-            Args:
-                userid (str):  userid of a person (Person.id)
-
-            Returns:
-                role_assignments:  Instances of RoleAssignment
-            """
-            orb.log.info('[rpc] vger.get_role_assignments({}) ...'.format(userid))
-            user = orb.select('Person', id=userid)
-            if user:
-                ras = orb.search_exact(cname='RoleAssignment',
-                                       assigned_to=user)
-                orgs = set([ra.role_assignment_context for ra in ras
-                            if ra.role_assignment_context])
-                # yes, this is wildly inefficient ...
-                org_dicts = [dict(oid=o.oid, id=o.id, name=o.name,
-                             description=o.description,
-                             parent_organization=getattr(
-                                        o.parent_organization, 'oid', None))
-                             for o in orgs]
-                user_dicts = [dict(oid=p.oid, id=p.id, name=p.name)
-                              for p in set([ra.assigned_to for ra in ras])]
-                role_dicts = [dict(oid=r.oid, id=r.id, name=r.name)
-                              for r in set([ra.assigned_role for ra in ras])]
-                ra_dicts = [dict(oid=ra.oid, assigned_role=ra.assigned_role.oid,
-                    assigned_to=ra.assigned_to.oid,
-                    role_assignment_context=getattr(
-                                        ra.role_assignment_context, 'oid', None))
-                    for ra in ras]
-                return {'organizations': org_dicts,
-                        'users': user_dicts,
-                        'roles': role_dicts,
-                        'roleAssignments': ra_dicts 
-                        }
-            else:
-                return {}
-
-        yield self.register(get_role_assignments, 'vger.get_role_assignments')
-
-        def get_user_roles(userid):
+        def get_user_roles(userid, data=None):
             """
             Get [0] the Person object that corresponds to the userid, [1] all
             Organization and Project objects, [2] all Person objects, and [3]
@@ -1058,6 +1021,9 @@ class RepositoryService(ApplicationSession):
 
             Args:
                 userid (str):  userid of a person (Person.id)
+                data (dict):  dict {oid: str(mod_datetime)}
+                    for the requestor's Person, Organization, Project, and
+                    RoleAssignment objects
 
             Returns:
                 tuple of lists:  [0] serialized user (Person) object,
@@ -1066,45 +1032,73 @@ class RepositoryService(ApplicationSession):
                                  [3] serialized RoleAssignment objects
             """
             orb.log.info('[rpc] vger.get_user_roles({}) ...'.format(userid))
+            data = data or {}
+            same_dts = []
+            unknown_oids = []
+            if data:
+                server_dts = orb.get_mod_dts(oids=list(data))
+                for oid in data:
+                    if (oid in server_dts
+                        and server_dts[oid] == data[oid]):
+                        same_dts.append(oid)
+                    elif oid not in server_dts:
+                        unknown_oids.append(oid)
+            # Now all oids in 'same_dts' are for objects that exist on the
+            # server and have the same mod_datetime as their counterparts on
+            # the client -- they will not be returned to the client.  All
+            # server objects whose mod_datetime differs from that of the
+            # corresponding object in the client's db will be returned to
+            # replace the client's object, since the server's objects for
+            # Person, Project, Organization, and RoleAssignment are
+            # authoritative.
+            szd_user = []
+            szd_orgs = []
+            szd_people = []
+            szd_ras = []
             user = orb.select('Person', id=userid)
             if user:
                 szd_user = serialize(orb, [user])
-                # all Organizations *and* Projects
-                orgs = orb.get_all_subtypes('Organization')
+            # all Organizations *and* Projects
+            all_orgs = orb.get_all_subtypes('Organization')
+            orgs = [o for o in all_orgs if o.oid not in same_dts]
+            if orgs:
                 szd_orgs = serialize(orb, orgs)
-                # all Person objects
-                people = orb.get_by_type('Person')
+            # all Person objects
+            all_people = orb.get_by_type('Person')
+            people = [p for p in all_people if p.oid not in same_dts]
+            if people:
                 szd_people = serialize(orb, people)
-                # all RoleAssignment objects
-                ras = orb.get_by_type('RoleAssignment')
+            # all RoleAssignment objects
+            all_ras = orb.get_by_type('RoleAssignment')
+            ras = [ra for ra in all_ras if ra.oid not in same_dts]
+            if ras:
                 szd_ras = serialize(orb, ras)
-                return [szd_user, szd_orgs, szd_people, szd_ras]
-            else:
-                return [[], [], []]
+            return [szd_user, szd_orgs, szd_people, szd_ras]
 
         yield self.register(get_user_roles, 'vger.get_user_roles')
 
-        def get_roles_in_org(org_oid):
-            """
-            Get all RoleAssignment objects that have the Organization with the
-            specified oid as their 'role_assignment_context' attribute.
+        # NOTE: DEPRECATED, not needed because ALL role assignments are synced
+        # def get_roles_in_org(org_oid):
+            # """
+            # Get all RoleAssignment objects that have the Organization with the
+            # specified oid as their 'role_assignment_context' attribute.
 
-            Args:
-                org_oid (str):  oid of the Organization
+            # Args:
+                # org_oid (str):  oid of the Organization
 
-            Returns:
-                list:  list of serialized RoleAssignment objects
-            """
-            orb.log.info('[rpc] vger.get_roles_in_org() ...')
-            org = orb.get(org_oid)
-            if org:
-                return serialize(orb,
-                                 orb.search_exact(cname='RoleAssignment',
-                                                  role_assignment_context=org))
-            else:
-                return []
+            # Returns:
+                # list:  list of serialized RoleAssignment objects
+            # """
+            # orb.log.info('[rpc] vger.get_roles_in_org() ...')
+            # org = orb.get(org_oid)
+            # if org:
+                # return serialize(orb,
+                                 # orb.search_exact(cname='RoleAssignment',
+                                                  # role_assignment_context=org))
+            # else:
+                # return []
 
-        yield self.register(get_roles_in_org, 'vger.get_roles_in_org')
+        # yield self.register(get_roles_in_org, 'vger.get_roles_in_org')
 
         def get_user_object(userid):
             """
