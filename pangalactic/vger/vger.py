@@ -1073,7 +1073,7 @@ class RepositoryService(ApplicationSession):
             ras = [ra for ra in all_ras if ra.oid not in same_dts]
             if ras:
                 szd_ras = serialize(orb, ras)
-            return [szd_user, szd_orgs, szd_people, szd_ras]
+            return [szd_user, szd_orgs, szd_people, szd_ras, unknown_oids]
 
         yield self.register(get_user_roles, 'vger.get_user_roles')
 
