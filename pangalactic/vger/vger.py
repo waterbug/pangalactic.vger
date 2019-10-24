@@ -685,9 +685,10 @@ class RepositoryService(ApplicationSession):
                     [3]:  any oids in data that were not found on the server
             """
             orb.log.info('[rpc] vger.sync_objects()')
+            result = [[], [], [], []]
             if not data:
                 orb.log.info('  no data sent; returning empty.')
-                return [[], [], [], []]
+                return result
             orb.log.info('   data: {}'.format(str(data)))
             # oids of objects unknown to the server
             unknown_oids = list(set(data) - set(orb.get_oids()))
@@ -715,12 +716,10 @@ class RepositoryService(ApplicationSession):
                 newer_sobjs = serialize(orb, orb.get(oids=newer_oids),
                                         include_components=True)
                 result = [newer_sobjs, same_oids, older_oids, unknown_oids]
-                orb.log.info('   result: {}'.format(str(result)))
-                return result
             else:
                 result = [[], same_oids, older_oids, unknown_oids]
-                orb.log.info('   result: {}'.format(str(result)))
-                return result
+            orb.log.info('   result: {}'.format(str(result)))
+            return result
 
         yield self.register(sync_objects, 'vger.sync_objects',
                             RegisterOptions(details_arg='cb_details'))
