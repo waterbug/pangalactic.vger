@@ -620,6 +620,7 @@ class RepositoryService(ApplicationSession):
             """
             orb.log.info('[rpc] vger.sync_parameter_definitions() ...')
             orb.log.info('   data: {}'.format(str(data)))
+            result = [[], [], [], []]
             pd_dts = orb.get_mod_dts('ParameterDefinition')
             server_pd_dts = {oid : dts for oid, dts in pd_dts.items()
                              if oid not in ref_pd_oids}
@@ -650,11 +651,12 @@ class RepositoryService(ApplicationSession):
                             older_dts.append(pd.oid)
                     else:
                         newer_pds.append(pd)
-                return [serialize(orb, newer_pds), same_dts, older_dts,
-                        unknown_oids]
+                result = [serialize(orb, newer_pds), same_dts, older_dts,
+                          unknown_oids]
             else:
-                return [serialize(orb, orb.get(oids=list(server_pd_dts.keys()))),
-                        [], [], []]
+                result = [serialize(orb, orb.get(oids=list(server_pd_dts.keys()))),
+                          [], [], []]
+            return result
 
         yield self.register(sync_parameter_definitions,
                             'vger.sync_parameter_definitions',
@@ -767,6 +769,7 @@ class RepositoryService(ApplicationSession):
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
                 # user = orb.select('Person', id=userid)
+            result = [[], [], [], []]
 
             # oids of objects unknown to the server (these would be objects
             # in data that were deleted on the server) -- the user should
@@ -813,11 +816,10 @@ class RepositoryService(ApplicationSession):
                                         include_components=True)
                 result = [newer_sobjs, same_oids, older_oids, unknown_oids]
                 orb.log.info('   result: {}'.format(str(result)))
-                return result
             else:
                 result = [[], same_oids, older_oids, unknown_oids]
                 orb.log.info('   result: {}'.format(str(result)))
-                return result
+            return result
 
         yield self.register(sync_library_objects, 'vger.sync_library_objects',
                             RegisterOptions(details_arg='cb_details'))
@@ -842,8 +844,9 @@ class RepositoryService(ApplicationSession):
             orb.log.info('[rpc] vger.sync_project() ...')
             orb.log.info('   project oid: {}'.format(str(project_oid)))
             orb.log.info('   data: {}'.format(str(data)))
+            result = [[], [], [], []]
             if not project_oid or project_oid == 'pgefobjects:SANDBOX':
-                return [[], [], [], []]
+                return result
             project = orb.get(project_oid)
             if project:
                 same_oids = []
@@ -876,14 +879,12 @@ class RepositoryService(ApplicationSession):
                                             include_components=True)
                     result = [newer_sobjs, same_oids, older_oids, unknown_oids]
                     orb.log.info('   result: {}'.format(str(result)))
-                    return result
                 else:
                     result = [[], same_oids, older_oids, unknown_oids]
                     orb.log.info('   result: {}'.format(str(result)))
-                    return result
             else:
                 orb.log.info('   ** project not found on server **')
-                return [[], [], [], []]
+            return result
 
         yield self.register(sync_project, 'vger.sync_project',
                             RegisterOptions(details_arg='cb_details'))
