@@ -24,7 +24,8 @@ from pangalactic.core                  import (config, state, read_config,
 from pangalactic.core.utils.meta       import uncook_datetime
 from pangalactic.core.access           import get_perms, is_cloaked
 from pangalactic.core.mapping          import schema_maps
-from pangalactic.core.serializers      import deserialize, serialize
+from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
+                                               deserialize, serialize)
 from pangalactic.core.uberorb          import orb
 from pangalactic.core.refdata          import ref_pd_oids
 from pangalactic.core.test.utils       import (create_test_users,
@@ -746,14 +747,11 @@ class RepositoryService(ApplicationSession):
 
             Return:
                 result (list of lists):  list containing:
-                    [0]:  server objects that have later mod_datetime(s) or
-                          were not found in data
-                          (the user should add these to their local db)
-                    [1]:  oids of server objects with same mod_datetime(s)
-                          (the user can safely ignore these)
-                    [2]:  oids of server objects with earlier mod_datetime(s)
-                          (there should not be any!)
-                    [3]:  any oids in data that were not found on the server --
+                    [0]:  any oids that have later mod_datetime(s) or were not
+                          found in data, sorted in DESERIALIZATION_ORDER (the
+                          client will do get_objects() calls to get these
+                          objects)
+                    [1]:  any oids in data that were not found on the server --
                           the user should delete these from their local db if
                           they are either
                           [a] not created by the user or
@@ -769,11 +767,11 @@ class RepositoryService(ApplicationSession):
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
                 # user = orb.select('Person', id=userid)
-            result = [[], [], [], []]
+            result = [{}, []]
 
             # oids of objects unknown to the server (these would be objects
             # in data that were deleted on the server) -- the user should
-            # delete these from their local db (NOTE that this is the reverse
+            # delete these from their local db (NOTE that this is the REVERSE
             # of the action taken by `sync_objects()`, which assumes they are
             # to be deleted on the server!!).
             unknown_oids = list(set(data) - set(orb.get_oids()))
@@ -788,8 +786,6 @@ class RepositoryService(ApplicationSession):
             # TODO:  objects decloaked to any org on which the user has a role
             #        (this will be, e.g., organizational product libraries)
             server_dts = {}
-            same_oids = []
-            older_oids = []
             public_oids = [o.oid for o in orb.search_exact(public=True)]
             if public_oids:
                 server_dts = {oid: uncook_datetime(dt_str) for oid, dt_str
@@ -804,20 +800,19 @@ class RepositoryService(ApplicationSession):
                 for oid in newer_oids:
                     if dts_by_oid.get(oid):
                         del dts_by_oid[oid]
-                # oids of server objects with same mod_datetime as submitted oids
-                same_oids = [oid for oid, dt in dts_by_oid.items()
-                             if dt == server_dts.get(oid)]
-                # oids of older objects on the server
-                older_oids = [oid for oid, dt in dts_by_oid.items()
-                              if (server_dts.get(oid)
-                                  and (dt > server_dts.get(oid)))]
             if newer_oids:
-                newer_sobjs = serialize(orb, orb.get(oids=newer_oids),
-                                        include_components=True)
-                result = [newer_sobjs, same_oids, older_oids, unknown_oids]
+                newer_oc = orb.get_oid_cnames(oids=newer_oids)
+                # TODO:  don't recompute this every time!!  create a
+                # DESERIALIZATION_ORDER that includes all classes
+                all_ord = (DESERIALIZATION_ORDER +
+                             list(set(newer_oc.values()) -
+                                  set(DESERIALIZATION_ORDER)))
+                sorted_newer_oids = sorted(newer_oc, key=lambda x:
+                                           all_ord.index(newer_oc.get(x)))
+                result = [sorted_newer_oids, unknown_oids]
                 orb.log.info('   result: {}'.format(str(result)))
             else:
-                result = [[], same_oids, older_oids, unknown_oids]
+                result = [{}, unknown_oids]
                 orb.log.info('   result: {}'.format(str(result)))
             return result
 
@@ -958,8 +953,6 @@ class RepositoryService(ApplicationSession):
         yield self.register(get_object, 'vger.get_object',
                             RegisterOptions(details_arg='cb_details'))
 
-        # NOTE: get_objects() is not currently used for anything but may be in
-        # the future
         def get_objects(oids, include_components=True, cb_details=None):
             """
             Retrieve the pangalactic objects with the specified oids.
@@ -974,9 +967,10 @@ class RepositoryService(ApplicationSession):
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                list of dict:  A serialization of the objects with the oids --
-                    this will be a list that may include related objects. If no
-                    object is found, returns an empty list
+                list:  A list of the serialized objects with the oids
+                    (note that it may be a longer list than that submitted
+                    because it will often include related objects). If no
+                    object is found, an empty list is returned.
             """
             orb.log.info('[rpc] vger.get_objects({}) ...'.format(oids))
             # TODO: use get_perms() and ObjectAccess to determine authorization
