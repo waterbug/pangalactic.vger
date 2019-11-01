@@ -767,7 +767,7 @@ class RepositoryService(ApplicationSession):
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
                 # user = orb.select('Person', id=userid)
-            result = [{}, []]
+            result = [[], []]
 
             # oids of objects unknown to the server (these would be objects
             # in data that were deleted on the server) -- the user should
