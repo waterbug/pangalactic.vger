@@ -280,15 +280,17 @@ class RepositoryService(ApplicationSession):
             orb.log.info(sobjs_list)
             userid = getattr(cb_details, 'caller_authid', 'unknown')
             orb.log.info('  caller authid: {}'.format(str(userid)))
-            # user_obj = orb.select('Person', id=userid)
-            # user_oid = getattr(user_obj, 'oid', None)
-            # NOTE:  for now, authorizations are "enforced" on the client side
-            # (essentially as suggestions to play nice ...)
-            # authorized_objs = [so for so in serialized_objs
-                               # if so.get('creator') == user_oid]
-            # if not authorized_objs:
-                # orb.log.info('  called with no authorized objs; returning.')
-                # return {'result': 'nothing saved.'}
+            user_obj = orb.select('Person', id=userid)
+            user_oid = getattr(user_obj, 'oid', None)
+            # new objects created by the user
+            authorized_objs = [so for so in serialized_objs
+                               if so.get('creator') == user_oid]
+            # existing objects to which the user has 'modify' permission
+            authorized_objs += [so for so in serialized_objs
+                            if 'modify' in get_perms(orb.get(so.get('oid')))]
+            if not authorized_objs:
+                orb.log.info('  called with no authorized objs; returning.')
+                return {'result': 'nothing saved.'}
             output = deserialize(orb, serialized_objs, dictify=True)
             mod_obj_dts = {}
             new_obj_dts = {}
