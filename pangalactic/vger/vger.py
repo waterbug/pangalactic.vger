@@ -287,7 +287,8 @@ class RepositoryService(ApplicationSession):
                                if so.get('creator') == user_oid]
             # existing objects to which the user has 'modify' permission
             authorized_objs += [so for so in serialized_objs
-                            if 'modify' in get_perms(orb.get(so.get('oid')))]
+                            if 'modify' in get_perms(orb.get(so.get('oid')),
+                                                     user=user_obj)]
             if not authorized_objs:
                 orb.log.info('  called with no authorized objs; returning.')
                 return {'result': 'nothing saved.'}
