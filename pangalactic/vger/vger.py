@@ -307,72 +307,36 @@ class RepositoryService(ApplicationSession):
                 # if the object has a public attr set to True or does not have
                 # a 'public' attr*, it is public unless it is a SANDBOX PSU.
                 # NOTE:  * this includes Acu and non-SANDBOX PSU objects
-                if ((getattr(mod_obj, 'public', True)) and
-                     not (hasattr(mod_obj, 'project') and
-                          getattr(mod_obj.project, 'id', '') == 'SANDBOX')):
-                    orb.log.info('   modified object is public -- ')
-                    orb.log.info('   publish "modified" on public channel...')
+                if is_cloaked(mod_obj):
+                    orb.log.info('   cloaked: only owner org has access:')
+                    # if cloaked, publish 'modified' message only on owner
+                    # channel
+                    owner_id = getattr(mod_obj.owner, 'id', None)
+                    if owner_id:
+                        log_msg = 'cloaked: publish "modified" on channel:'
+                        channel = 'vger.channel.' + owner_id
+                        orb.log.info('   + {} {}'.format(log_msg, channel))
+                        self.publish(channel, {'modified': content})
+                else:
+                    orb.log.info('   + modified object is public, publishing')
+                    orb.log.info('     "modified" on public channel ...')
                     channel = 'vger.channel.public'
                     self.publish(channel, {'modified': content})
-                else:
-                    if is_cloaked(mod_obj):
-                        orb.log.info('   cloaked: no orgs have access:')
-                        orb.log.info(
-                            '   not publishing "modified" on org channels.')
-                    else:
-                        # if decloaked, publish 'modified' message on owner
-                        # channel; if owner is None/empty, use 'public' channel
-                        owner_id = getattr(mod_obj.owner, 'id',
-                                           'public') or 'public'
-                        log_msg = 'decloaked: publish "modified" on owner or '
-                        log_msg += 'public channel "{}" ...'.format(owner_id)
-                        orb.log.info('   {}'.format(log_msg))
-                        if owner_id:
-                            channel = 'vger.channel.' + owner_id
-                        orb.log.info('   + on channel: {}'.format(channel))
-                        self.publish(channel, {'modified': content})
                 mod_obj_dts[mod_obj.oid] = str(mod_obj.mod_datetime)
             for new_obj in output['new']:
-                # ** NOTE: is_cloaked() always returns True for SANDBOX PSUs.
-                # If an object does not have a 'public' attr*, it is public*
-                # NOTE:  * Acu and ProjectSystemUsage objects are not public
-                # but oids of new ones are published on 'public' channel ...
-                if isinstance(new_obj, orb.classes['ManagedObject']):
-                    # ManagedObject introduces the 'public' flag ...
-                    if new_obj.public:
-                        orb.log.info('   new object is public -- ')
-                        orb.log.info('   publish on public channel...')
-                        new_objs['public'][new_obj.oid] = new_obj.id
-                    else:
-                        orb.log.info('   new Managed Object oid: {}'.format(
-                                                                new_obj.oid))
-                        orb.log.info('   new object is non-public -- ')
-                        if is_cloaked(new_obj):
-                            orb.log.info('   obj is cloaked ...')
-                            orb.log.info('   not publishing "decloaked" msg.')
-                        else:
-                            org_id = new_obj.owner.id
-                            orb.log.info('   publishing only to owner org:')
-                            orb.log.info('   {}'.format(org_id ))
-                            if not org_id in new_objs:
-                                new_objs[org_id] = {}
-                            new_objs[org_id][new_obj.oid] = new_obj.id
-                elif (isinstance(new_obj, (orb.classes['Acu'],
-                                          orb.classes['ProjectSystemUsage']))
-                      and not (hasattr(new_obj, 'project') and
-                               getattr(new_obj.project, 'id', '') == 'SANDBOX')):
-                    # NOTE:  * ProjectSystemUsage objects are announced if NOT
-                    # in SANDBOX project ...
-                    orb.log.info('   new Acu/PSU oid: {}'.format(new_obj.oid))
-                    orb.log.info('                id: {}'.format(new_obj.id))
-                    orb.log.info('   (will decloak on public channel)')
-                    new_objs['public'][new_obj.oid] = new_obj.id
-                elif not (hasattr(new_obj, 'project') and
-                          getattr(new_obj.project, 'id', '') == 'SANDBOX'):
-                    orb.log.info('   new obj not ManagedObject, Acu,')
-                    orb.log.info('   or SANDBOX PSU, so it is public -- ')
-                    new_objs['public'][new_obj.oid] = new_obj.id
-                new_obj_dts[new_obj.oid] = str(new_obj.mod_datetime)
+                if is_cloaked(new_obj):
+                    orb.log.info('   + new object oid: {}'.format(new_obj.oid))
+                    orb.log.info('     object is cloaked -- ')
+                    owner_id = getattr(mod_obj.owner, 'id', None)
+                    if owner_id:
+                        orb.log.info('   publishing only to owner org:')
+                        orb.log.info('   {}'.format(owner_id ))
+                        if not owner_id in new_objs:
+                            new_objs[owner_id] = {}
+                else:
+                    orb.log.info('   + new object is public --')
+                    orb.log.info('     will publish on public channel ...')
+                    new_objs["public"][new_obj.oid] = new_obj.id
             # publish "decloaked" messages for new objects here ...
             for org_id in new_objs:
                 if org_id == 'public' and new_objs['public']:
@@ -459,150 +423,6 @@ class RepositoryService(ApplicationSession):
             return (oids_not_found, oids_deleted)
 
         yield self.register(delete, 'vger.delete',
-                            RegisterOptions(details_arg='cb_details'))
-
-        def decloak(obj_oid, actor_oid, cb_details=None):
-            """
-            Decloak a ManagedObject in the repository to the Organization or
-            Project that is its 'owner' and publish a message to the relevant
-            actor channel.  (In some contexts, 'decloak' is referred to as
-            'release' or 'publish'.  'decloak' is chosen here since it is free
-            of semantic baggage, or at least more so than those other possible
-            terms.)
-
-            In terms of the PGEF standard message structures, 'decloaked' is
-            the 'subject' of the published message and the
-            `(obj_oid, obj_id, actor_oid, actor_id)` tuple is the 'content'.
-
-            Args:
-                obj_oid:   oid of the Product to be decloaked
-                actor_oid: oid of the Actor instance to receive access to it;
-                    if the actor is None or an empty string, the object will be
-                    decloaked globally.
-
-            Keyword Args:
-                cb_details:  added by crossbar; not included in rpc signature
-
-            Returns:
-                The cloaking status of the Product -- i.e. the same data
-                as is returned by 'get_cloaking_status':
-                (1) a list (oids of actors the object has been decloaked to)
-                (2) a message (empty if successful)
-                (3) the submitted object oid
-            """
-            # TODO:
-            #   - authorization:  is user permitted to decloak the objs
-            #                     i.e. is user the creator (or admin?)
-            orb.log.info('[rpc] vger.decloak() ...')
-            orb.log.info('      object oid: {}'.format(str(obj_oid)))
-            orb.log.info('      actor_oid:  {}'.format(str(actor_oid)))
-            userid = getattr(cb_details, 'caller_authid', None)
-            orb.log.info('      caller authid: {}'.format(str(userid)))
-            user = orb.select('Person', id=userid)
-            msg = ''
-            actors = []
-            if obj_oid:
-                obj = orb.get(obj_oid)
-                if obj:
-                    # if not isinstance(obj, orb.classes['ManagedObject']):
-                        # msg = 'object is not a Managed Object; not cloakable'
-                        # return actors, msg, obj_oid
-                    if getattr(obj, 'public', True):
-                        channel = 'vger.channel.public'
-                        self.publish(channel, {'decloaked':
-                                     [{obj.oid: obj.id}, '', '']})
-                        msg = 'object is already public; not cloakable'
-                        return actors, msg, obj_oid
-                    if 'decloak' not in get_perms(obj, user,
-                                                  config.get('permissive')):
-                        msg = 'user is not authorized to decloak this object'
-                        return actors, msg, obj_oid
-                    oas = orb.search_exact(cname='ObjectAccess',
-                                           accessible_object=obj)
-                    if oas:
-                        actors = [getattr(oa.grantee, 'oid', '') for oa in oas]
-                    actor = getattr(obj, 'owner', None)
-                    existing_oa = orb.select('ObjectAccess',
-                                             accessible_object=obj,
-                                             grantee=actor)
-                    if existing_oa:
-                        msg = 'object was already_decloaked'
-                        return actors, msg, obj_oid
-                    elif actor:
-                        ObjectAccess = orb.classes['ObjectAccess']
-                        dts = dtstamp()
-                        new_oid = str(uuid4())
-                        new_id = actor.id + '.access_to.' + obj.id
-                        oa = ObjectAccess(oid=new_oid,
-                                          id=new_id,
-                                          accessible_object=obj,
-                                          grantee=actor,
-                                          create_datetime=dts,
-                                          mod_datetime=dts)
-                        orb.save([oa])
-                        channel = 'vger.channel.' + str(
-                                        getattr(actor, 'id', 'public'))
-                        self.publish(channel, {'decloaked':
-                                     [obj.oid, obj.id, actor.oid, actor.id]})
-                        actors.append(actor_oid)
-                        return actors, msg, obj_oid
-                    else:
-                        msg = 'object has no owner; could not decloak'
-                        return actors, msg, obj_oid
-                else:
-                    msg = 'object not found'
-                    return actors, msg, obj_oid
-            else:
-                msg = 'request did not reference an object'
-            return actors, msg, obj_oid
-
-        yield self.register(decloak, 'vger.decloak',
-                            RegisterOptions(details_arg='cb_details'))
-
-        def get_cloaking_status(obj_oid, cb_details=None):
-            """
-            Get information on the cloaking status of an object.
-
-            Args:
-                obj_oid:   oid of the object to be decloaked
-
-            Keyword Args:
-                cb_details:  added by crossbar; not included in rpc signature
-
-            Returns:
-                3-tuple consisting of
-                (1) a list (oids of actors the object has been decloaked to)
-                (2) a message (empty if successful)
-                (3) the submitted object oid
-            """
-            orb.log.info('[rpc] vger.get_cloaking_status() ...')
-            orb.log.info('  - object oid: {}'.format(str(obj_oid)))
-            actors = []
-            msg = ''
-            if obj_oid:
-                obj = orb.get(obj_oid)
-                if obj:
-                    if not isinstance(obj, orb.classes['ManagedObject']):
-                        msg = 'Object is not a Managed Object, not cloakable'
-                        actors = ['public']
-                        return actors, msg, obj_oid
-                    elif obj.public:
-                        msg = 'Object is public'
-                        actors = ['public']
-                        return actors, msg, obj_oid
-                    oas = orb.search_exact(cname='ObjectAccess',
-                                           accessible_object=obj)
-                    if oas:
-                        actors = [getattr(oa.grantee, 'oid', '') for oa in oas]
-                    else:
-                        msg = 'cloaked'
-                else:
-                    msg = 'not found'
-            else:
-                msg = 'no oid'
-            return actors, msg, obj_oid
-
-        yield self.register(get_cloaking_status, 'vger.get_cloaking_status',
                             RegisterOptions(details_arg='cb_details'))
 
         def sync_parameter_definitions(data, cb_details=None):
@@ -786,8 +606,6 @@ class RepositoryService(ApplicationSession):
             # get mod_dts of all objects on the server to which the user should
             # have access ...
             # initially, just public objects (`ManagedObject` subtypes)
-            # TODO:  objects decloaked to any org on which the user has a role
-            #        (this will be, e.g., organizational product libraries)
             server_dts = {}
             public_oids = [o.oid for o in orb.search_exact(public=True)]
             if public_oids:
