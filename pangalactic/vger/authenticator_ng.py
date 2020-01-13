@@ -2,7 +2,6 @@
 Authentication "worker" module for the crossbar server, implementing
 authentication for use with the 'test_vger' testing module.
 """
-from __future__ import print_function
 import bcrypt
 import fileinput
 import os
