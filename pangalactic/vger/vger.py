@@ -560,8 +560,8 @@ class RepositoryService(ApplicationSession):
             NOTE:  the use of the keyword arg 'public' in orb.search_exact()
             implies that only instances of ManagedObject and its subclasses
             (Product, Template, etc.) will be returned.  Note also that this
-            means Ports and PortTemplates libraries will not be synced, since
-            they are not ManagedObjects.
+            means PortTypes and PortTemplates libraries will not be synced,
+            since they are not ManagedObjects.
 
             Args:
                 data (dict):  dict {oid: str(mod_datetime)}
@@ -757,8 +757,7 @@ class RepositoryService(ApplicationSession):
                     object is found, returns an empty list
             """
             orb.log.info('[rpc] vger.get_object({}) ...'.format(oid))
-            # TODO: use get_perms() and ObjectAccess to determine authorization
-            # for user
+            # TODO: use get_perms() to determine authorization
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
                 # user = orb.select('Person', id=userid)
@@ -794,8 +793,7 @@ class RepositoryService(ApplicationSession):
                     object is found, an empty list is returned.
             """
             orb.log.info('[rpc] vger.get_objects({}) ...'.format(oids))
-            # TODO: use get_perms() and ObjectAccess to determine authorization
-            # for user
+            # TODO: use get_perms() to determine authorization
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
                 # user = orb.select('Person', id=userid)
