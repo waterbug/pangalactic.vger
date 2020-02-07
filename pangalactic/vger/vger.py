@@ -705,6 +705,67 @@ class RepositoryService(ApplicationSession):
         yield self.register(sync_project, 'vger.sync_project',
                             RegisterOptions(details_arg='cb_details'))
 
+        def data_new_row(proj_id=None, dm_oid=None, row_oid=None):
+            """
+            Add a new row to a DataMatrix.
+
+            Keyword Args:
+                proj_id (str):  id of the project
+                dm_oid (str):  oid of the DataMatrix
+                row_oid (str):  oid of the new row
+
+            Return:
+                result (str):  'success'
+            """
+            orb.log.info('[rpc] vger.data_add_row() ...')
+            orb.log.info('   project id: {}'.format(str(proj_id)))
+            orb.log.info('   dm oid: {}'.format(str(dm_oid)))
+            orb.log.info('   row_oid: {}'.format(str(row_oid)))
+            # TODO:  update local copy of datamatrix ...
+            # For now, just publish!
+            # publish item on project channel
+            channel = 'vger.channel.' + proj_id
+            txt = 'publishing new row oid on channel "{}" ...'
+            orb.log.info('   + {}'.format(txt.format(channel)))
+            self.publish(channel,
+                         {'data new row':
+                          [proj_id, dm_oid, row_oid]})
+            return 'success'
+
+        yield self.register(data_new_row, 'vger.data_new_row',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def data_update_item(proj_id=None, dm_oid=None, row_oid=None,
+                             col_id=None, value=None, cb_details=None):
+            """
+            Update a DataMatrix item.
+
+            Keyword Args:
+                proj_id (str):  id of the project
+
+            Return:
+                result (str):  'success'
+            """
+            orb.log.info('[rpc] vger.data_update_item() ...')
+            orb.log.info('   project id: {}'.format(str(proj_id)))
+            orb.log.info('   dm oid: {}'.format(str(dm_oid)))
+            orb.log.info('   row_oid: {}'.format(str(row_oid)))
+            orb.log.info('   col_id: {}'.format(str(col_id)))
+            orb.log.info('   value: {}'.format(str(value)))
+            # TODO:  update local copy of datamatrix ...
+            # For now, just publish!
+            # publish item on project channel
+            channel = 'vger.channel.' + proj_id
+            txt = 'publishing data item on channel "{}" ...'
+            orb.log.info('   + {}'.format(txt.format(channel)))
+            self.publish(channel,
+                         {'data item updated':
+                          [proj_id, dm_oid, row_oid, col_id, value]})
+            return 'success'
+
+        yield self.register(data_update_item, 'vger.data_update_item',
+                            RegisterOptions(details_arg='cb_details'))
+
         def search_exact(**kw):
             """
             Search for instances of the specified class by exact match on a set
