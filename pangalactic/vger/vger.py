@@ -705,7 +705,8 @@ class RepositoryService(ApplicationSession):
         yield self.register(sync_project, 'vger.sync_project',
                             RegisterOptions(details_arg='cb_details'))
 
-        def data_new_row(proj_id=None, dm_oid=None, row_oid=None):
+        def data_new_row(proj_id=None, dm_oid=None, row_oid=None,
+                         cb_details=None):
             """
             Add a new row to a DataMatrix.
 
