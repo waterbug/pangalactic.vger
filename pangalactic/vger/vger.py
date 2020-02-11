@@ -718,7 +718,7 @@ class RepositoryService(ApplicationSession):
             Return:
                 result (str):  'success'
             """
-            orb.log.info('[rpc] vger.data_add_row() ...')
+            orb.log.info('[rpc] vger.data_new_row() ...')
             orb.log.info('   project id: {}'.format(str(proj_id)))
             orb.log.info('   dm oid: {}'.format(str(dm_oid)))
             orb.log.info('   row_oid: {}'.format(str(row_oid)))
@@ -819,16 +819,23 @@ class RepositoryService(ApplicationSession):
                     object is found, returns an empty list
             """
             orb.log.info('[rpc] vger.get_object({}) ...'.format(oid))
-            # TODO: use get_perms() to determine authorization
-            # userid = getattr(cb_details, 'caller_authid', '')
-            # if userid:
-                # user = orb.select('Person', id=userid)
-            obj = orb.get(oid)
-            if obj is not None:
-                # TODO:  if include_components is True, get_perms() should be
-                # used to determine the user's access to the components ...
-                return serialize(orb, [obj],
-                                 include_components=include_components)
+            userid = getattr(cb_details, 'caller_authid', '')
+            if userid:
+                user = orb.select('Person', id=userid)
+                obj = orb.get(oid)
+                if 'view' in get_perms(obj, user=user):
+                    if obj is not None:
+                        # TODO:  if include_components is True, get_perms()
+                        # should be used to determine the user's access to the
+                        # components ...
+                        return serialize(orb, [obj],
+                                         include_components=include_components)
+                    else:
+                        orb.log.info('      object not found.')
+                else:
+                    orb.log.info('      not permitted for user "{}".'.format(
+                                                                     userid))
+                    return []
             else:
                 return []
 
