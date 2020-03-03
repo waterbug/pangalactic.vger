@@ -327,7 +327,7 @@ class RepositoryService(ApplicationSession):
                 if is_cloaked(new_obj):
                     orb.log.info('   + new object oid: {}'.format(new_obj.oid))
                     orb.log.info('     object is cloaked -- ')
-                    owner_id = getattr(mod_obj.owner, 'id', None)
+                    owner_id = getattr(new_obj.owner, 'id', None)
                     if owner_id:
                         orb.log.info('   publishing only to owner org:')
                         orb.log.info('   {}'.format(owner_id ))
