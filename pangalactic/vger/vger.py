@@ -260,21 +260,29 @@ class RepositoryService(ApplicationSession):
 
             Returns:
                 dict of dicts, in the form:
-                    {'new_obj_dts':  {obj0.oid : str(obj0.mod_datetime),
-                                      obj1.oid : str(obj1.mod_datetime),
-                                      ...},
-                     'mod_obj_dts':  {obj2.oid : str(obj2.mod_datetime),
-                                      obj3.oid : str(obj3.mod_datetime),
-                                      ...}
-                                      }
+                  {'new_obj_dts':  {obj0.oid : str(obj0.mod_datetime),
+                                    obj1.oid : str(obj1.mod_datetime),
+                                    ...},
+                   'mod_obj_dts':  {obj2.oid : str(obj2.mod_datetime),
+                                    obj3.oid : str(obj3.mod_datetime),
+                                    ...}
+                   'unauth': [ids of objects for which save was unauthorized],
+                   'no_owners': [ids of objects that did not have owners but
+                                 should]
             """
             orb.log.info('[rpc] vger.save() ...')
+            no_owners = []
             if not serialized_objs:
-                orb.log.info('  called with nothing; returning.')
-                return {'result': 'success.'}
+                orb.log.info('  called with nothing.')
+                return dict(new_obj_dts={}, mod_obj_dts={}, unauth=[],
+                            no_owners=[])
             orb.log.info('  called for objects with object ids:')
+            # uniquifies and gets rid of oidless objects
+            sobjs_unique = {so.get('oid'): so for so in serialized_objs
+                            if so.get('oid')}
+            sobjs = sobjs_unique.values()
             sobjs_list = ''
-            for so in serialized_objs:
+            for so in sobjs:
                 sobjs_list += '   + {} ({})\n'.format(so.get('id', '[no id]'),
                                                       so['_cname'])
             orb.log.info(sobjs_list)
@@ -282,23 +290,43 @@ class RepositoryService(ApplicationSession):
             orb.log.info('  caller authid: {}'.format(str(userid)))
             user_obj = orb.select('Person', id=userid)
             user_oid = getattr(user_obj, 'oid', None)
+            # check for objects that have no owners but should ...
+            ownerless = []
+            for sobj in sobjs:
+                if (issubclass(orb.classes[sobj['_cname']],
+                               orb.classes['ManagedObject'])
+                    and not sobj.get('owner')):
+                    # add object id to 'no_owners' and remove the object from
+                    # sobjs_unique ...
+                    no_owners.append(sobj['id'])
+                    ownerless.append(sobj['oid'])
+            for oid in ownerless:
+                del sobjs_unique[oid]
             # new objects created by the user
-            authorized_objs = [so for so in serialized_objs
-                               if so.get('creator') == user_oid]
-            # existing objects to which the user has 'modify' permission
-            authorized_objs += [so for so in serialized_objs
-                            if 'modify' in get_perms(orb.get(so.get('oid')),
-                                                     user=user_obj)]
-            if not authorized_objs:
-                orb.log.info('  called with no authorized objs; returning.')
-                return {'result': 'nothing saved.'}
-            output = deserialize(orb, serialized_objs, dictify=True)
+            authorized = {oid:so for oid, so in sobjs_unique.items()
+                          if so.get('creator') == user_oid}
+            # existing objects for which the user has 'modify' permission
+            for oid, so in sobjs_unique.items():
+                if 'modify' in get_perms(orb.get(so.get('oid')),
+                                         user=user_obj):
+                    authorized[oid] = so 
+            unauthorized = {oid:so for oid, so in sobjs_unique.items()
+                            if oid not in authorized}
+            unauth_ids = [unauthorized[oid].get('id', 'no id')
+                          for oid in unauthorized]
+            if not authorized:
+                orb.log.info('  no save: {} unauthorized object(s).'.format(
+                                                          len(unauthorized)))
+                return dict(new_obj_dts={}, mod_obj_dts={}, unauth=unauth_ids,
+                            no_owners=no_owners)
+            output = deserialize(orb, authorized.values(), dictify=True)
             mod_obj_dts = {}
             new_obj_dts = {}
-            # the "new_objs" dict needs to group new object dicts by the
-            # channels on which they will be published:
+            # the "new_objs" and "mod_obj" dicts need to group object dicts by
+            # the channels on which they will be published:
             # {'public': {oid: id, ...}, 'org1': {oid: id, ...}, 'org2': ...}
             new_objs = {'public': {}}
+            mod_objs = {'public': {}}
             for mod_obj in output['modified']:
                 orb.log.info('   modified object oid: {}'.format(mod_obj.oid))
                 orb.log.info('                    id: {}'.format(mod_obj.id))
@@ -311,12 +339,31 @@ class RepositoryService(ApplicationSession):
                     orb.log.info('   cloaked: only owner org has access:')
                     # if cloaked, publish 'modified' message only on owner
                     # channel
-                    owner_id = getattr(mod_obj.owner, 'id', None)
+                    owner_id = ''
+                    if hasattr(mod_obj, 'owner'):
+                        owner_id = getattr(mod_obj.owner, 'id', None)
+                    elif isinstance(mod_obj,
+                                    orb.classes['ProjectSystemUsage']):
+                        owner = getattr(mod_obj.system, 'owner', None)
+                        if owner:
+                            owner_id = getattr(mod_obj.system.owner, 'id',
+                                               None)
+                    elif isinstance(mod_obj, orb.classes['Acu']):
+                        owner = getattr(mod_obj.assembly, 'owner', None)
+                        if owner:
+                            owner_id = getattr(mod_obj.assembly.owner, 'id',
+                                               None)
                     if owner_id:
-                        log_msg = 'cloaked: publish "modified" on channel:'
+                        if owner_id in mod_objs:
+                            mod_objs[owner_id][mod_obj.oid] = mod_obj.id
+                        else:
+                            mod_objs[owner_id] = {mod_obj.oid: mod_obj.id}
+                        log_msg = 'cloaked: publishing "modified" on channel:'
                         channel = 'vger.channel.' + owner_id
                         orb.log.info('   + {} {}'.format(log_msg, channel))
                         self.publish(channel, {'modified': content})
+                    else:
+                        orb.log.info('   not publishing -- no owner org.')
                 else:
                     orb.log.info('   + modified object is public, publishing')
                     orb.log.info('     "modified" on public channel ...')
@@ -324,19 +371,45 @@ class RepositoryService(ApplicationSession):
                     self.publish(channel, {'modified': content})
                 mod_obj_dts[mod_obj.oid] = str(mod_obj.mod_datetime)
             for new_obj in output['new']:
+                orb.log.info('   new object oid: {}'.format(new_obj.oid))
+                orb.log.info('               id: {}'.format(new_obj.id))
+                content = (new_obj.oid, new_obj.id,
+                           str(new_obj.mod_datetime))
                 if is_cloaked(new_obj):
                     orb.log.info('   + new object oid: {}'.format(new_obj.oid))
                     orb.log.info('     object is cloaked -- ')
-                    owner_id = getattr(new_obj.owner, 'id', None)
+                    owner_id = ''
+                    if isinstance(new_obj, orb.classes['Product']):
+                        owner_id = getattr(new_obj.owner, 'id', None)
+                    elif isinstance(new_obj,
+                                    orb.classes['ProjectSystemUsage']):
+                        owner = getattr(new_obj.system, 'owner', None)
+                        if owner:
+                            owner_id = getattr(new_obj.system.owner, 'id',
+                                               None)
+                    elif isinstance(new_obj, orb.classes['Acu']):
+                        owner = getattr(new_obj.assembly, 'owner', None)
+                        if owner:
+                            owner_id = getattr(new_obj.assembly.owner, 'id',
+                                               None)
                     if owner_id:
-                        orb.log.info('   publishing only to owner org:')
-                        orb.log.info('   {}'.format(owner_id ))
-                        if not owner_id in new_objs:
-                            new_objs[owner_id] = {}
+                        msg = '   + publishing "new" only to owner org: "{}"'
+                        orb.log.info(msg.format(owner_id))
+                        if owner_id in new_objs:
+                            new_objs[owner_id][new_obj.oid] = new_obj.id
+                        else:
+                            new_objs[owner_id] = {new_obj.oid: new_obj.id}
+                        log_msg = 'cloaked: publishing "new" on channel:'
+                        channel = 'vger.channel.' + owner_id
+                        orb.log.info('   + {} {}'.format(log_msg, channel))
+                        self.publish(channel, {'new': content})
+                    else:
+                        orb.log.info('   not publishing -- no owner org.')
                 else:
                     orb.log.info('   + new object is public --')
                     orb.log.info('     will publish on public channel ...')
                     new_objs["public"][new_obj.oid] = new_obj.id
+                new_obj_dts[new_obj.oid] = str(new_obj.mod_datetime)
             # publish "decloaked" messages for new objects here ...
             for org_id in new_objs:
                 if org_id == 'public' and new_objs['public']:
@@ -346,15 +419,16 @@ class RepositoryService(ApplicationSession):
                     for obj_oid, obj_id in new_objs['public'].items():
                         self.publish('vger.channel.public',
                                      {'decloaked': [obj_oid, obj_id, '', '']})
-                else:
+                elif not org_id == 'public':
                     # if not public, publish decloaked on owner org channel
                     channel = 'vger.channel.' + org_id
-                    txt = 'publishing decloaked on channel "{}" ...'
+                    txt = 'publishing cloaked items on channel "{}" ...'
                     orb.log.info('   + {}'.format(txt.format(channel)))
                     for obj_oid, obj_id in new_objs[org_id].items():
                         self.publish(channel,
                                  {'decloaked': [obj_oid, obj_id, '', '']})
-            return dict(new_obj_dts=new_obj_dts, mod_obj_dts=mod_obj_dts)
+            return dict(new_obj_dts=new_obj_dts, mod_obj_dts=mod_obj_dts,
+                        unauth=unauth_ids, no_owners=no_owners)
 
         yield self.register(save, 'vger.save',
                             RegisterOptions(details_arg='cb_details'))
