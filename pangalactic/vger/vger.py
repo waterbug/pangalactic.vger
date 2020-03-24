@@ -115,6 +115,7 @@ class RepositoryService(ApplicationSession):
         convert, and import this data into a new database when the server is
         restarted.
         """
+        orb._save_parmz()
         orb.dump_db()
 
     def onConnect(self):
