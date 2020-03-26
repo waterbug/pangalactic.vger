@@ -149,7 +149,7 @@ class RepositoryService(ApplicationSession):
                 orb.log.info("      content: {}".format(str(content)))
                 orb.log.info("      (taking no action)")
             # elif subject == 'decloaked':
-                # obj_oid, obj_id, actor_oid, actor_id = content
+                # obj_oid, obj_id = content
             # elif subject == 'modified':
                 # obj_oid, obj_id, obj_mod_datetime = content
             # elif subject == 'organization':
@@ -238,7 +238,7 @@ class RepositoryService(ApplicationSession):
                                                                 new_ra.id)
                         orb.log.info('   {}'.format(log_msg))
                         self.publish('vger.channel.public', {'decloaked':
-                                     [new_ra.oid, new_ra.id, '', '']})
+                                                      [new_ra.oid, new_ra.id]})
                     return dict(new_obj_dts=new_ra_dts, mod_obj_dts=mod_ra_dts)
                 else:
                     orb.log.info('  role assignment not authorized.')
@@ -419,15 +419,14 @@ class RepositoryService(ApplicationSession):
                     orb.log.info('   + {}'.format(txt))
                     for obj_oid, obj_id in new_objs['public'].items():
                         self.publish('vger.channel.public',
-                                     {'decloaked': [obj_oid, obj_id, '', '']})
+                                     {'decloaked': [obj_oid, obj_id]})
                 elif not org_id == 'public':
                     # if not public, publish decloaked on owner org channel
                     channel = 'vger.channel.' + org_id
                     txt = 'publishing cloaked items on channel "{}" ...'
                     orb.log.info('   + {}'.format(txt.format(channel)))
                     for obj_oid, obj_id in new_objs[org_id].items():
-                        self.publish(channel,
-                                 {'decloaked': [obj_oid, obj_id, '', '']})
+                        self.publish(channel, {'decloaked': [obj_oid, obj_id]})
             return dict(new_obj_dts=new_obj_dts, mod_obj_dts=mod_obj_dts,
                         unauth=unauth_ids, no_owners=no_owners)
 
