@@ -21,16 +21,19 @@ from autobahn.wamp.types import RegisterOptions
 from pangalactic.core                  import __version__
 from pangalactic.core                  import (config, state, read_config,
                                                write_config, write_state)
-from pangalactic.core.utils.meta       import uncook_datetime
+from pangalactic.core.entity           import (save_dmz, save_entz,
+                                               save_ent_histz)
 from pangalactic.core.access           import get_perms, is_cloaked
 from pangalactic.core.mapping          import schema_maps
+from pangalactic.core.parametrics      import save_data_elementz, save_parmz
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
                                                deserialize, serialize)
-from pangalactic.core.uberorb          import orb
 from pangalactic.core.refdata          import ref_pd_oids
 from pangalactic.core.test.utils       import (create_test_users,
                                                create_test_project)
 from pangalactic.core.utils.datetimes  import dtstamp, earlier
+from pangalactic.core.uberorb          import orb
+from pangalactic.core.utils.meta       import uncook_datetime
 from pangalactic.vger.userdir          import search_ldap_directory
 
 
@@ -111,11 +114,20 @@ class RepositoryService(ApplicationSession):
         """
         When the server is killed, serialize the database contents to a json or
         yaml file (db.json|yaml) in the `vault` directory.  If the server is
-        updated and the update includes a schema change, the orb will read,
+        updated and the update includes a schema change, the orb can read,
         convert, and import this data into a new database when the server is
         restarted.
         """
-        orb._save_parmz()
+        de_path = os.path.join(orb.home, 'data_elements.json')
+        parms_path = os.path.join(orb.home, 'parameters.json')
+        ents_path = os.path.join(orb.home, 'ents.json')
+        ent_hists_path = os.path.join(orb.home, 'ent_hists.json')
+        dms_path = os.path.join(orb.home, 'dms.json')
+        save_data_elementz(de_path)
+        save_parmz(parms_path)
+        save_entz(ents_path)
+        save_ent_histz(ent_hists_path)
+        save_dmz(dms_path)
         orb.dump_db()
 
     def onConnect(self):
