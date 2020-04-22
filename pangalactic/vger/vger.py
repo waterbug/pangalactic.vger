@@ -8,6 +8,8 @@ from uuid import uuid4
 
 import ruamel_yaml as yaml
 
+from louie import dispatcher
+
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet._sslverify import OpenSSLCertificateAuthorities
 from twisted.internet.ssl import CertificateOptions
@@ -42,8 +44,12 @@ TICKETS = {
     'service2': '987secret'
     }
 
-gsfc_mel_parms = [
-            'm', 'P', 'R_D', 'Vendor', 'Cost', 'TRL']
+gsfc_mel_parms = ['m', 'P', 'R_D',
+                  'm[CBE]', 'm[Ctgcy]', 'm[MEV]',
+                  'P[CBE]', 'P[Ctgcy]', 'P[MEV]',
+                  'R_D[CBE]', 'R_D[Ctgcy]', 'R_D[MEV]',
+                  'Cost']
+gsfc_mel_des = ['Vendor', 'TRL']
 
 
 class RepositoryService(ApplicationSession):
@@ -79,12 +85,11 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('* [vger] H2G2 objects already loaded.')
             else:
                 # set default parms for create_test_project
-                if not config.get('default_parms'):
-                    config['default_parms'] = gsfc_mel_parms[:]
                 orb.log.info('* [vger] loading H2G2 objects ...')
                 deserialize(orb, create_test_project())
                 hw = orb.search_exact(cname='HardwareProduct', id_ns='test')
-                orb.assign_test_parameters(hw)
+                orb.assign_test_parameters(hw, parms=gsfc_mel_parms,
+                                           des=gsfc_mel_des)
                 state['test_project_loaded'] = True
             write_state(os.path.join(orb.home, 'state'))
         if config.get('load_extra_data'):
@@ -109,6 +114,14 @@ class RepositoryService(ApplicationSession):
                                 orb.log.info('         {}'.format(msg))
                         except:
                             orb.log.info('         deserialize() failed.')
+        dispatcher.connect(self.on_log_info_msg, 'log info msg')
+        dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
+
+    def on_log_info_msg(self, msg=''):
+        orb.log.info(msg)
+
+    def on_log_debug_msg(self, msg=''):
+        orb.log.debug(msg)
 
     def shutdown(self):
         """
