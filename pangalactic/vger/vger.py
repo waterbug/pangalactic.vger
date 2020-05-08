@@ -30,7 +30,7 @@ from pangalactic.core.mapping          import schema_maps
 from pangalactic.core.parametrics      import save_data_elementz, save_parmz
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
                                                deserialize, serialize)
-from pangalactic.core.refdata          import ref_pd_oids
+from pangalactic.core.refdata          import ref_oids
 from pangalactic.core.test.utils       import (create_test_users,
                                                create_test_project)
 from pangalactic.core.utils.datetimes  import dtstamp, earlier
@@ -524,67 +524,6 @@ class RepositoryService(ApplicationSession):
         yield self.register(delete, 'vger.delete',
                             RegisterOptions(details_arg='cb_details'))
 
-        def sync_parameter_definitions(data, cb_details=None):
-            """
-            Sync all ParameterDefinitions in the repository with the
-            requestor's.
-
-            Args:
-                data (dict):  dict {oid: str(mod_datetime)}
-                    for the requestor's set of ParameterDefinitions
-
-            Return:
-                result (list of lists):  list containing:
-                    [0]:  server objects that either have later mod_datetime(s)
-                          or are not represented in the data that was sent
-                    [1]:  oids of server objects with same mod_datetime(s)
-                    [2]:  oids of server objects with earlier mod_datetime(s)
-                    [3]:  any oids in data that were not found on the server
-            """
-            orb.log.info('[rpc] vger.sync_parameter_definitions() ...')
-            orb.log.info('   data: {}'.format(str(data)))
-            result = [[], [], [], []]
-            pd_dts = orb.get_mod_dts('ParameterDefinition')
-            server_pd_dts = {oid : dts for oid, dts in pd_dts.items()
-                             if oid not in ref_pd_oids}
-            if data:
-                unknown_oids = []
-                for oid in data:
-                    if not orb.get(oid):
-                        unknown_oids.append(oid)
-                for oid in unknown_oids:
-                    del data[oid]
-                same_dts = []
-                # all server pd dts that are not the same as those in data
-                not_same_dts = {}
-                for oid, dts_str in server_pd_dts.items():
-                    # NOTE:  may need to convert strings to datetimes
-                    if str(dts_str) == str(data.get(oid)):
-                        same_dts.append(oid)
-                    else:
-                        not_same_dts[oid] = dts_str
-                newer_pds = []
-                older_dts = []
-                for pd in orb.get(oids=list(not_same_dts.keys())):
-                    if data.get(pd.oid):
-                        data_dt = uncook_datetime(data[pd.oid])
-                        if pd.mod_datetime > data_dt:
-                            newer_pds.append(pd)
-                        else:
-                            older_dts.append(pd.oid)
-                    else:
-                        newer_pds.append(pd)
-                result = [serialize(orb, newer_pds), same_dts, older_dts,
-                          unknown_oids]
-            else:
-                result = [serialize(orb, orb.get(oids=list(server_pd_dts.keys()))),
-                          [], [], []]
-            return result
-
-        yield self.register(sync_parameter_definitions,
-                            'vger.sync_parameter_definitions',
-                            RegisterOptions(details_arg='cb_details'))
-
         def sync_objects(data, cb_details=None):
             """
             Sync the objects referenced by the data.  NOTE:  oids in the data
@@ -611,6 +550,9 @@ class RepositoryService(ApplicationSession):
             """
             orb.log.info('[rpc] vger.sync_objects()')
             result = [[], [], [], []]
+            # remove any refdata
+            non_ref = set(data.keys()) - set(ref_oids)
+            data = {oid: data[oid] for oid in non_ref}
             if not data:
                 orb.log.info('  no data sent; returning empty.')
                 return result
@@ -660,7 +602,8 @@ class RepositoryService(ApplicationSession):
             implies that only instances of ManagedObject and its subclasses
             (Product, Template, etc.) will be returned.  Note also that this
             means PortTypes and PortTemplates libraries will not be synced,
-            since they are not ManagedObjects.
+            since they are not ManagedObjects, but they are also "reference
+            data", so they should not be synced anyway.
 
             Args:
                 data (dict):  dict {oid: str(mod_datetime)}
@@ -919,22 +862,29 @@ class RepositoryService(ApplicationSession):
             """
             orb.log.info('[rpc] vger.get_object({}) ...'.format(oid))
             userid = getattr(cb_details, 'caller_authid', '')
+            # short-circuit requests for refdata ...
+            if oid in ref_oids:
+                return []
             if userid:
                 user = orb.select('Person', id=userid)
                 obj = orb.get(oid)
-                if 'view' in get_perms(obj, user=user):
-                    if obj is not None:
+                if obj is None:
+                    # orb.log.info('      not found.')
+                    return []
+                elif getattr(obj, 'public', True):
+                    return serialize(orb, [obj],
+                                     include_components=include_components)
+                else:
+                    if 'view' in get_perms(obj, user=user):
                         # TODO:  if include_components is True, get_perms()
                         # should be used to determine the user's access to the
                         # components ...
                         return serialize(orb, [obj],
                                          include_components=include_components)
                     else:
-                        orb.log.info('      object not found.')
-                else:
-                    orb.log.info('      not permitted for user "{}".'.format(
-                                                                     userid))
-                    return []
+                        # orb.log.info('      not permitted for "{}".'.format(
+                                                                    # userid))
+                        return []
             else:
                 return []
 
@@ -965,7 +915,9 @@ class RepositoryService(ApplicationSession):
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
                 # user = orb.select('Person', id=userid)
-            objs = orb.get(oids=oids)
+            # exclude all ref data
+            non_ref_oids = list(set(oids) - set(ref_oids))
+            objs = orb.get(oids=non_ref_oids)
             if objs:
                 # TODO:  if include_components is True, get_perms() should be
                 # used to determine the user's access to the components ...
