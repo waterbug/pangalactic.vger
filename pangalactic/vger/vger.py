@@ -23,11 +23,8 @@ from autobahn.wamp.types import RegisterOptions
 from pangalactic.core                  import __version__
 from pangalactic.core                  import (config, state, read_config,
                                                write_config, write_state)
-from pangalactic.core.entity           import (save_dmz, save_entz,
-                                               save_ent_histz)
 from pangalactic.core.access           import get_perms, is_cloaked
 from pangalactic.core.mapping          import schema_maps
-from pangalactic.core.parametrics      import save_data_elementz, save_parmz
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
                                                deserialize, serialize)
 from pangalactic.core.refdata          import ref_oids
@@ -130,17 +127,9 @@ class RepositoryService(ApplicationSession):
         updated and the update includes a schema change, the orb can read,
         convert, and import this data into a new database when the server is
         restarted.
+
+        NOTE: orb.dump_db() will also save all the caches to json files.
         """
-        de_path = os.path.join(orb.home, 'data_elements.json')
-        parms_path = os.path.join(orb.home, 'parameters.json')
-        ents_path = os.path.join(orb.home, 'ents.json')
-        ent_hists_path = os.path.join(orb.home, 'ent_hists.json')
-        dms_path = os.path.join(orb.home, 'dms.json')
-        save_data_elementz(de_path)
-        save_parmz(parms_path)
-        save_entz(ents_path)
-        save_ent_histz(ent_hists_path)
-        save_dmz(dms_path)
         orb.dump_db()
 
     def onConnect(self):
