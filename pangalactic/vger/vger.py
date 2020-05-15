@@ -999,29 +999,6 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_user_roles, 'vger.get_user_roles')
 
-        # NOTE: DEPRECATED, not needed because ALL role assignments are synced
-        # def get_roles_in_org(org_oid):
-            # """
-            # Get all RoleAssignment objects that have the Organization with the
-            # specified oid as their 'role_assignment_context' attribute.
-
-            # Args:
-                # org_oid (str):  oid of the Organization
-
-            # Returns:
-                # list:  list of serialized RoleAssignment objects
-            # """
-            # orb.log.info('[rpc] vger.get_roles_in_org() ...')
-            # org = orb.get(org_oid)
-            # if org:
-                # return serialize(orb,
-                                 # orb.search_exact(cname='RoleAssignment',
-                                                  # role_assignment_context=org))
-            # else:
-                # return []
-
-        # yield self.register(get_roles_in_org, 'vger.get_roles_in_org')
-
         def get_user_object(userid):
             """
             Retrieves the Person object for the specified userid.
@@ -1163,37 +1140,6 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_people, 'vger.get_people')
 
-        ###### json procedures: call the rpc and json.dump the output
-        ###### (for use with crossbar's "REST Bridge")
-
-        def json_search_exact(**kw):
-            """
-            Call search_exact as a http rest call
-            """
-            objs = search_exact(**kw)
-            return json.dumps(objs).decode('utf-8')
-        yield self.register(json_search_exact, 'vger.json_search_exact')
-
-        def json_get_object(oid):
-            """
-            Call get_object as a http rest call
-            """
-            # returns a list containing one serialized object or None
-            res = get_object(oid)
-            return json.dumps(res).decode('utf-8')
-        yield self.register(json_get_object, 'vger.json_get_object')
-
-        def json_delete(oid):
-            """
-            Call delete as a http rest call
-            """
-            try:
-                obj = orb.get(oid)
-                orb.delete([obj])
-                return json.dumps(True)
-            except:
-                return json.dumps(False)
-        yield self.register(json_delete, 'vger.json_delete')
 
         # end of backend setup
         orb.log.info("procedures registered")
