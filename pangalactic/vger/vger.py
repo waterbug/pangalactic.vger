@@ -638,7 +638,9 @@ class RepositoryService(ApplicationSession):
             # have access ...
             # initially, just public objects (`ManagedObject` subtypes)
             server_dts = {}
-            public_oids = [o.oid for o in orb.search_exact(public=True)]
+            all_public_oids = [o.oid for o in orb.search_exact(public=True)]
+            # exclude reference data
+            public_oids = list(set(all_public_oids) - set(ref_oids)]
             if public_oids:
                 server_dts = {oid: uncook_datetime(dt_str) for oid, dt_str
                               in orb.get_mod_dts(oids=public_oids).items()}
