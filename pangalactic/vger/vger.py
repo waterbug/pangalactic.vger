@@ -67,7 +67,8 @@ class RepositoryService(ApplicationSession):
         super(RepositoryService, self).__init__(*args, **kw)
         orb.start(home=self.config.extra['home'], gui=False,
                   db_url=self.config.extra['db_url'],
-                  debug=self.config.extra['debug'])
+                  debug=self.config.extra['debug'],
+                  console=self.config.extra['console'])
         atexit.register(self.shutdown)
         # always load test users steve, zaphod, buckaroo, whorfin
         if not state.get('test_users_loaded'):
@@ -1170,6 +1171,8 @@ if __name__ == '__main__':
                         help='Set logging level to DEBUG')
     parser.add_argument('-t', '--test', dest='test', action='store_true',
                         help='Loads test data at startup')
+    parser.add_argument('--console', dest='console', action='store_true',
+                        help='Sends log output to stdout')
     options = parser.parse_args()
 
     from autobahn.twisted.wamp import ApplicationRunner
@@ -1189,10 +1192,12 @@ if __name__ == '__main__':
              'postgresql://scred@:5432/vgerdb?host={}'.format(domain_socket))
     test = options.test or config.get('test', False)
     debug = options.debug or config.get('debug', False)
+    console = options.console or config.get('console', False)
     extra = {
         'authid': authid,
         'home': home,
         'db_url': db_url,
+        'console': console,
         'debug': debug,
         'test': test
         }
@@ -1200,10 +1205,11 @@ if __name__ == '__main__':
     cb_port = options.cb_port or config.get('cb_port', '8080')
     cb_url = 'wss://{}:{}/ws'.format(cb_host, cb_port)
     # router can auto-choose the realm, so not necessary to specify
-    realm = None
+    realm = 'pangalactic-services'
     config['authid'] = authid
     config['db_url'] = db_url
     config['debug'] = debug
+    config['console'] = console
     config['test'] = test
     config['cb_host'] = cb_host
     config['cb_port'] = cb_port
@@ -1212,13 +1218,14 @@ if __name__ == '__main__':
     print("vger starting with")
     print("   home directory:  '{}'".format(home))
     print("   connecting to crossbar at:  '{}'".format(cb_url))
-    print("       realm:  '{}'".format(realm or "not specified (auto-choose)"))
+    print("       realm:  '{}'".format(realm))
     print("       authid: '{}'".format(authid))
     print("   db url: '{}'".format(options.db_url))
     print("   ldap url: '{}'".format(config.get('ldap_url', '[not set]')))
     print("   base_dn: '{}'".format(config.get('base_dn', '[not set]')))
     print("   test: '{}'".format(str(test)))
     print("   debug: '{}'".format(str(debug)))
+    print("   console: '{}'".format(str(console)))
     if authid not in TICKETS:
         print("Given authid <{}> is not in my tickets database!".format(
                                                                     authid))
