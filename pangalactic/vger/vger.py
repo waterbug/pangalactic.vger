@@ -3,7 +3,7 @@
 """
 The Virtual Galactic Entropy Reverser
 """
-import argparse, atexit, os, six, sys
+import argparse, atexit, os, signal, sys
 from uuid import uuid4
 
 import ruamel_yaml as yaml
@@ -16,9 +16,8 @@ from twisted.internet.ssl import CertificateOptions
 
 from OpenSSL import crypto
 
-# from autobahn.wamp.types import RegisterOptions, PublishOptions
 from autobahn.twisted.wamp import ApplicationSession
-from autobahn.wamp.types import RegisterOptions
+from autobahn.wamp.types   import RegisterOptions
 
 from pangalactic.core                  import __version__
 from pangalactic.core                  import (config, state, read_config,
@@ -37,8 +36,7 @@ from pangalactic.vger.userdir          import search_ldap_directory
 
 
 TICKETS = {
-    'service1': '789secret',
-    'service2': '987secret'
+    'service1': '789secret', 'service2': '987secret'
     }
 
 gsfc_mel_parms = ['m', 'P', 'R_D',
@@ -65,11 +63,11 @@ class RepositoryService(ApplicationSession):
         its 'extra' keyword arg.
         """
         super(RepositoryService, self).__init__(*args, **kw)
+        # start the orb ...
         orb.start(home=self.config.extra['home'], gui=False,
                   db_url=self.config.extra['db_url'],
                   debug=self.config.extra['debug'],
                   console=self.config.extra['console'])
-        atexit.register(self.shutdown)
         # always load test users steve, zaphod, buckaroo, whorfin
         if not state.get('test_users_loaded'):
             orb.log.info('* [vger] loading test users ...')
@@ -114,6 +112,7 @@ class RepositoryService(ApplicationSession):
                             orb.log.info('         deserialize() failed.')
         dispatcher.connect(self.on_log_info_msg, 'log info msg')
         dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
+        atexit.register(self.shutdown)
 
     def on_log_info_msg(self, msg=''):
         orb.log.info(msg)
@@ -123,11 +122,10 @@ class RepositoryService(ApplicationSession):
 
     def shutdown(self):
         """
-        When the server is killed, serialize the database contents to a json or
-        yaml file (db.json|yaml) in the `vault` directory.  If the server is
-        updated and the update includes a schema change, the orb can read,
-        convert, and import this data into a new database when the server is
-        restarted.
+        Serialize the database contents to a json or yaml file (db.json|yaml)
+        in the `vault` directory.  If the server is updated and the update
+        includes a schema change, the orb can read, convert, and import this
+        data into a new database when the server is restarted.
 
         NOTE: orb.dump_db() will also save all the caches to json files.
         """
@@ -1153,19 +1151,19 @@ if __name__ == '__main__':
     config_help = 'initial config file name [default: "config"]'
     cert_help = 'crossbar host cert file name [default: "server_cert.pem"].'
     parser = argparse.ArgumentParser()
-    parser.add_argument('--authid', dest='authid', type=six.text_type,
+    parser.add_argument('--authid', dest='authid', type=str,
                         help='id to connect as (required)')
-    parser.add_argument('--home', dest='home', type=six.text_type,
+    parser.add_argument('--home', dest='home', type=str,
                         help=home_help)
-    parser.add_argument('--config', dest='config', type=six.text_type,
+    parser.add_argument('--config', dest='config', type=str,
                         default='config', help=config_help)
-    parser.add_argument('--db_url', dest='db_url', type=six.text_type,
+    parser.add_argument('--db_url', dest='db_url', type=str,
                         help='db connection url (used by orb)')
-    parser.add_argument('--cb_host', dest='cb_host', type=six.text_type,
+    parser.add_argument('--cb_host', dest='cb_host', type=str,
                         help='crossbar host [default: localhost].')
-    parser.add_argument('--cb_port', dest='cb_port', type=six.text_type,
+    parser.add_argument('--cb_port', dest='cb_port', type=int,
                         help='crossbar port [default: 8080].')
-    parser.add_argument('--cert', dest='cert', type=six.text_type,
+    parser.add_argument('--cert', dest='cert', type=str,
                         default='server_cert.pem', help=cert_help)
     parser.add_argument('-d', '--debug', dest='debug', action='store_true',
                         help='Set logging level to DEBUG')
@@ -1175,7 +1173,8 @@ if __name__ == '__main__':
                         help='Sends log output to stdout')
     options = parser.parse_args()
 
-    from autobahn.twisted.wamp import ApplicationRunner
+    # from autobahn.twisted.wamp import ApplicationRunner
+    from autobahn.twisted.component import Component, run
 
     # command options override config settings; if neither, defaults are used
     home = options.home or ''
@@ -1202,7 +1201,7 @@ if __name__ == '__main__':
         'test': test
         }
     cb_host = options.cb_host or config.get('cb_host', 'localhost')
-    cb_port = options.cb_port or config.get('cb_port', '8080')
+    cb_port = options.cb_port or config.get('cb_port', 8080)
     cb_url = 'wss://{}:{}/ws'.format(cb_host, cb_port)
     # router can auto-choose the realm, so not necessary to specify
     realm = 'pangalactic-services'
@@ -1234,10 +1233,20 @@ if __name__ == '__main__':
     # home directory)
     cert_fpath = os.path.join(home, options.cert)
     cert_content = crypto.load_certificate(crypto.FILETYPE_PEM,
-                                           six.u(open(cert_fpath, 'r').read()))
+                                           str(open(cert_fpath, 'r').read()))
     tls_options = CertificateOptions(
                     trustRoot=OpenSSLCertificateAuthorities([cert_content]))
-    runner = ApplicationRunner(url=cb_url, realm=realm, ssl=tls_options,
-                               extra=extra)
-    runner.run(RepositoryService, auto_reconnect=True)
+    comp = Component(session_factory=RepositoryService,
+                     transports=[{
+                        "url": cb_url,
+                        "endpoint": {
+                            "type": "tcp",
+                            "host": cb_host,
+                            "port": cb_port,
+                            "tls":  tls_options},
+                        "serializers": ["json"]
+                            }],
+                     realm=realm,
+                     extra=extra)
+    run([comp])
 
