@@ -3,7 +3,7 @@
 """
 The Virtual Galactic Entropy Reverser
 """
-import argparse, atexit, os, signal, sys
+import argparse, atexit, os, sys
 from uuid import uuid4
 
 import ruamel_yaml as yaml

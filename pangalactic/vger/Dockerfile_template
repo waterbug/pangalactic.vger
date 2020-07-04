@@ -1,0 +1,73 @@
+# use ubuntu as a base image
+FROM ubuntu
+
+# need to explicitly add sudo package (docker ubuntu does not include)
+RUN apt-get update \
+ && apt-get install -y sudo
+
+# add the app user scred:pangalactic
+RUN groupadd --gid 1024 pangalactic && \
+    useradd --gid 1024 -d /home/scred -m scred
+
+# add scred to 'sudo' group and sudo group to sudoers
+RUN usermod -a -G sudo scred && \
+    echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+# create the 'vger_home' volume
+RUN mkdir /vger_home
+COPY localhost_server_cert.pem /vger_home/server_cert.pem
+
+# copy config file and local reference data files here
+COPY config /vger_home
+### local data element definitions ...
+# COPY DataElementDefinitions.yaml /vger_home
+### other local reference data ...
+# COPY data.yaml /vger_home
+RUN chmod 775 /vger_home && chown -R scred:1024 /vger_home
+
+USER scred
+RUN mkdir -m 0700 /vger_home/vgerdb
+WORKDIR /home/scred
+# to get a traceback for C crashes ...
+ENV PYTHONFAULTHANDLER=1
+ENV PGPORT=65432
+ENV GROUP=1024
+ENV USER=scred
+ENV VGER_HOME=/vger_home
+COPY Miniconda3-latest-Linux-x86_64.sh .
+COPY supervisord.conf .
+SHELL ["bash", "-c"]
+RUN bash Miniconda3-latest-Linux-x86_64.sh -b -p /home/scred/miniconda
+ENV PATH="/home/scred/miniconda/bin:$PATH"
+# expose the postgresql port
+EXPOSE 65432
+RUN conda update conda \
+ # force installs of python-ldap and psycopg2
+ && conda install -c conda-forge python-ldap \
+ && conda install -c conda-forge psycopg2 \
+ && conda install -c conda-forge supervisor \
+ # install pangalactic.vger package from my conda repo
+ && conda install -c https://pangalactic.us/conda_repo -c conda-forge pangalactic.vger \
+ # install postgresql conda package
+ && conda install postgresql \
+ # remove cached packages etc.
+ && conda clean -a \
+ # configure postgresql
+ && initdb -D /vger_home/vgerdb \
+ && echo "port = 65432" >> /vger_home/vgerdb/postgresql.conf \
+ && pg_ctl -D /vger_home/vgerdb start \
+ && createdb vgerdb
+
+# create the volume *AFTER* all the db commands have finished, because any mods
+# to the volume after it is declared will be discarded!
+VOLUME /vger_home
+
+# NOTE: vger.py tries to connect to crossbar at start up
+# - location of crossbar can be set using parameters "cb_host" and "cb_port"
+#   [default values:  cb_host "localhost", cb_port "8080"]
+
+### "shell form" of ENTRYPOINT
+ENTRYPOINT exec /usr/bin/sudo -u scred \
+ /home/scred/miniconda/bin/supervisord -c \
+ /home/scred/supervisord.conf
+
