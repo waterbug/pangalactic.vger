@@ -1238,6 +1238,7 @@ if __name__ == '__main__':
                     trustRoot=OpenSSLCertificateAuthorities([cert_content]))
     comp = Component(session_factory=RepositoryService,
                      transports=[{
+                        "type": "websocket",
                         "url": cb_url,
                         "endpoint": {
                             "type": "tcp",
