@@ -128,6 +128,9 @@ class RepositoryService(ApplicationSession):
         can read, convert, and import the db dump file into a new database and
         parameter / data element caches after the server is restarted.
         """
+        # first save the caches
+        orb.save_caches(orb.home)
+        # then backup everything
         orb.dump_all()
 
     def onConnect(self):
