@@ -122,14 +122,13 @@ class RepositoryService(ApplicationSession):
 
     def shutdown(self):
         """
-        Serialize the database contents to a json or yaml file (db.json|yaml)
-        in the `vault` directory.  If the server is updated and the update
-        includes a schema change, the orb can read, convert, and import this
-        data into a new database when the server is restarted.
-
-        NOTE: orb.dump_db() will also save all the caches to json files.
+        Serialize all database objects to a json or yaml file (db.json|yaml)
+        and save all caches, putting all files into the `backup` directory.  If
+        the server is updated and the update includes a schema change, the orb
+        can read, convert, and import the db dump file into a new database and
+        parameter / data element caches after the server is restarted.
         """
-        orb.dump_db()
+        orb.dump_all()
 
     def onConnect(self):
         # self.config is set up by ApplicationRunner when it "runs" the session
