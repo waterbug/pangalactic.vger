@@ -1,0 +1,110 @@
+{
+  "version": 2,
+  "workers": [
+      {
+          "type": "router",
+          "options": {
+              "pythonpath": [
+                  "../.."
+              ]
+          },
+          "realms": [
+              {
+                  "name": "pangalactic-services",
+                  "roles": [
+                      {
+                          "name": "authenticator",
+                          "permissions": [
+                              {
+                                  "uri": "pgef.authenticate",
+                                  "match": "exact",
+                                  "allow": {
+                                      "call": true,
+                                      "register": true,
+                                      "publish": true,
+                                      "subscribe": true 
+                                  },
+                                  "disclose": {
+                                      "caller": false,
+                                      "publisher": false
+                                  },
+                                  "cache": true
+                              }
+                          ]
+                      },
+                      {
+                          "name": "user",
+                          "allow-by-default": true,
+                          "permissions": [
+                              {
+                                  "uri": "",
+                                  "match": "prefix",
+                                  "allow": {
+                                      "call": true,
+                                      "register": false,
+                                      "publish": true,
+                                      "subscribe": true
+                                  },
+                                  "disclose": {
+                                      "caller": true,
+                                      "publisher": true
+                                  },
+                                  "cache": true
+                              }
+                          ]
+                      },
+                      {
+                          "name": "service",
+                          "allow-by-default": true,
+                          "permissions": [
+                              {
+                                  "uri": "",
+                                  "match": "prefix",
+                                  "allow": {
+                                      "call": true,
+                                      "register": true,
+                                      "publish": true,
+                                      "subscribe": true
+                                  },
+                                  "disclose": {
+                                      "caller": true,
+                                      "publisher": true
+                                  },
+                                  "cache": true
+                              }
+                          ]
+                      }
+                  ]
+              }
+          ],
+          "transports": [
+              {
+                  "type": "websocket",
+                  "endpoint": {
+                      "type": "tcp",
+                      "port": 8080,
+                      "tls": {
+                          "key": "server_key.pem",
+                          "certificate": "server_cert.pem"
+                      }
+                  },
+                  "auth": {
+                      "ticket": {
+                          "type": "dynamic",
+                          "authenticator": "pgef.authenticate",
+                          "authenticator-realm": "pangalactic-services"
+                      }
+                  }
+              }
+          ],
+          "components": [
+              {
+                  "type": "class",
+                  "classname": "authenticator.AuthenticatorSession",
+                  "realm": "pangalactic-services",
+                  "role": "authenticator"
+              }
+          ]
+      }
+  ]
+}
