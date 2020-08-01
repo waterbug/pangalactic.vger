@@ -1220,14 +1220,14 @@ if __name__ == '__main__':
         'authid': None,
         'home': home,
         'db_url': db_url,
-        'key': 'new.key',
+        'key': 'vger.key',
         'console': console,
         'debug': debug,
         'test': test
         }
     cb_host = options.cb_host or config.get('cb_host', 'localhost')
     cb_port = options.cb_port or config.get('cb_port', 8080)
-    cb_url = 'ws://{}:{}/ws'.format(cb_host, cb_port)
+    cb_url = 'wss://{}:{}/ws'.format(cb_host, cb_port)
     # router can auto-choose the realm, so not necessary to specify
     realm = 'pangalactic-services'
     # config['authid'] = None
@@ -1243,6 +1243,7 @@ if __name__ == '__main__':
     print("   home directory:  '{}'".format(home))
     print("   connecting to crossbar at:  '{}'".format(cb_url))
     print("       realm:  '{}'".format(realm))
+    print("       server cert:  '{}'".format(options.cert))
     # print("       authid: '{}'".format(authid))
     print("   db url: '{}'".format(options.db_url))
     print("   ldap url: '{}'".format(config.get('ldap_url', '[not set]')))
@@ -1252,11 +1253,16 @@ if __name__ == '__main__':
     print("   console: '{}'".format(str(console)))
     # load crossbar host certificate (default: file 'server_cert.pem' in
     # home directory)
-    cert_fpath = os.path.join(home, options.cert)
+    cert_fname = options.cert or 'server_cert.pem'
+    cert_fpath = os.path.join(home, cert_fname)
     cert_content = crypto.load_certificate(crypto.FILETYPE_PEM,
                                            str(open(cert_fpath, 'r').read()))
-    tls_options = CertificateOptions(
+    try:
+        tls_options = CertificateOptions(
                     trustRoot=OpenSSLCertificateAuthorities([cert_content]))
+    except:
+        print("Could not get tls_options from server cert -- exiting.")
+        sys.exit()
     # comp = Component(session_factory=RepositoryService,
                      # transports=[{
                         # "type": "websocket",
@@ -1273,8 +1279,7 @@ if __name__ == '__main__':
     # run([comp])
 
     print("Connecting to {}: realm={}".format(cb_url, realm))
-    # runner = ApplicationRunner(url=cb_url, realm=realm, extra=extra,
-                               # ssl=tls_options)
-    runner = ApplicationRunner(url=cb_url, realm=realm, extra=extra)
+    runner = ApplicationRunner(url=cb_url, realm=realm, extra=extra,
+                               ssl=tls_options)
     runner.run(RepositoryService)
 
