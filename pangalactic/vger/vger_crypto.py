@@ -3,7 +3,7 @@
 """
 The Virtual Galactic Entropy Reverser
 """
-import argparse, atexit, os
+import argparse, atexit, os, sys
 from uuid import uuid4
 
 import ruamel_yaml as yaml
@@ -1198,7 +1198,7 @@ if __name__ == '__main__':
     options = parser.parse_args()
 
     from autobahn.twisted.wamp import ApplicationRunner
-    from autobahn.twisted.component import Component, run
+    # from autobahn.twisted.component import Component, run
 
     # command options override config settings; if neither, defaults are used
     home = options.home or ''
@@ -1210,9 +1210,10 @@ if __name__ == '__main__':
     # will look up the authid associated with our public key ...
     # authid = options.authid or config.get('authid')
     # unix domain socket connection to db:  socket located in home dir
-    domain_socket = home + '/vgerdb_socket'
+    domain_socket = os.path.join(home, 'vgerdb_socket')
     db_url = options.db_url or config.get('db_url',
              'postgresql://scred@:5432/vgerdb?host={}'.format(domain_socket))
+    private_key = os.path.join(home, 'vger.key')
     test = options.test or config.get('test', False)
     debug = options.debug or config.get('debug', False)
     console = options.console or config.get('console', False)
@@ -1220,7 +1221,7 @@ if __name__ == '__main__':
         'authid': None,
         'home': home,
         'db_url': db_url,
-        'key': 'vger.key',
+        'key': private_key,
         'console': console,
         'debug': debug,
         'test': test
