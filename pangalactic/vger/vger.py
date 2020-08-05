@@ -1,1 +1,0 @@
-vger_passwd.py
