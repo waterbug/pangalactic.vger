@@ -129,18 +129,46 @@ def search_ldap_directory(ldap_url, base_dn, test=None, **kw):
         return f
     if test == 'result':
         # return an example result (Red Lectroids :)
-        return [dict(oid='12345678', id='bigboote', last_name='Bigboote',
-                     first_name='John', mi_or_name='D', org_code='890.0',
-                     employer_name='Yoyodyne',
-                     email='John.Bigboote@yoyodyne.com'),
-                dict(oid='12345679', id='thornystick', last_name='Thornystick',
-                     first_name='John', mi_or_name='T', org_code='890.0',
-                     employer_name='Yoyodyne',
+        return [dict(oid='test:carefulwalker', id='carefulwalker',
+                     last_name='Carefulwalker', first_name='John',
+                     mi_or_name='D', name='John Carefulwalker',
+                     org_code='890.0', employer_name='Yoyodyne',
+                     email='John.Carefulwalker@yoyodyne.com'),
+                dict(oid='test:thornystick', id='thornystick',
+                     last_name='Thornystick', first_name='John',
+                     mi_or_name='T', name='John Thornystick',
+                     org_code='890.0', employer_name='Yoyodyne',
                      email='John.Thornystick@yoyodyne.com'),
-                dict(oid='12345670', id='yaya', last_name='Yaya',
-                     first_name='John', mi_or_name='R', org_code='890.0',
-                     employer_name='Yoyodyne',
-                     email='John.Yaya@yoyodyne.com')]
+                dict(oid='test:smallberries', id='smallberries',
+                     last_name='Smallberries', first_name='John',
+                     mi_or_name='R', name='John Smallberries',
+                     org_code='890.0', employer_name='Yoyodyne',
+                     email='John.Smallberries@yoyodyne.com'),
+                dict(
+                    oid='test:buckaroo', id='buckaroo',
+                    first_name='Buckaroo', mi_or_name='', last_name='Banzai',
+                    name='Buckaroo Banzai', org_code='890.0',
+                    email='buckaroo@banzai.earth.milkyway.univ',
+                    employer_name='Banzai'),
+                dict(
+                    oid='test:whorfin', id='whorfin',
+                    first_name='John', mi_or_name='', last_name='Whorfin',
+                    name='John Whorfin (Dr. Emilio Lizardo)', org_code='890.0',
+                    email='whorfin@redlectroids.planet10.univ',
+                    employer_name='Yoyodyne'),
+                dict(
+                    oid='test:bigboote', id='bigboote',
+                    first_name='John', mi_or_name='', last_name='Bigboote',
+                    name='John Bigboote', org_code='890.0',
+                    email='bigboote@redlectroids.planet10.univ',
+                    employer_name='Yoyodyne'),
+                dict(
+                    oid='test:manyjars', id='manyjars',
+                    first_name='John', mi_or_name='', last_name='Manyjars',
+                    name='John Manyjars', org_code='890.0',
+                    email='manyjars@redlectroids.planet10.univ',
+                    employer_name='Yoyodyne')
+                    ]
     # NOTE: the *field values* in res will be bytes
     res = search_by_filterstring(ldap_url, base_dn, f)
     people = []
