@@ -3,7 +3,7 @@
 """
 The Virtual Galactic Entropy Reverser
 """
-import argparse, atexit, os, sys
+import argparse, atexit, os, sqlite3, sys
 from uuid import uuid4
 
 import ruamel_yaml as yaml
@@ -1067,7 +1067,7 @@ class RepositoryService(ApplicationSession):
 
         def add_person(data):
             """
-            Add a new Person based on a set of attribute data.
+            Add a new Person (user) based on a set of attribute data.
 
             Args:
                 data (dict): the attribute data of the Person
@@ -1083,17 +1083,15 @@ class RepositoryService(ApplicationSession):
             if data:
                 msg = 'called with data: {}'.format(str(data))
                 orb.log.info('    {}'.format(msg))
-                # first check if person is already in db ...
+                # check if person is already in db ...
                 existing_person = orb.get(data.get('oid'))
                 if existing_person:
-                    orb.log.info('      not adding: person is in the db')
+                    orb.log.info('      not adding: person is in the repo.')
                     return []
-                orb.log.info('      person oid is not in the db; adding ...')
+                orb.log.info('      person is not in the repo; adding ...')
                 saved_objs = []
                 admin = orb.get('pgefobjects:admin')
                 dts = dtstamp()
-                # TODO: this is some NASA-specific stuff that may be factored
-                # out ...
                 employer_name = data.pop('employer_name', '')
                 if employer_name:
                     employer = orb.select('Organization', name=employer_name)
@@ -1113,6 +1111,7 @@ class RepositoryService(ApplicationSession):
                         orb.save([employer], recompute=False)
                         data['employer'] = employer
                         saved_objs.append(employer)
+                # TODO: "org code" is some NASA-specific stuff
                 org_code = data.pop('org_code', '')
                 if org_code:
                     org = orb.select('Organization', id=org_code)
@@ -1136,6 +1135,21 @@ class RepositoryService(ApplicationSession):
                                 create_datetime=dts, mod_datetime=dts, **data)
                 orb.save([person], recompute=False)
                 saved_objs.append(person)
+                if data.get('public_key'):
+                    db_path = '/node/principals.db'
+                    if not os.path.exists(db_path):
+                        orb.log.info(' - "/node/principals.db" not found.')
+                    else:
+                        # TODO: use a try/except block here ...
+                        # add pk to principals db
+                        conn = sqlite3.connect(db_path)
+                        c = conn.cursor()
+                        c.execute('INSERT INTO users VALUES (?, ?, ?)',
+                            (data['public_key'], data['id'], data['role']))
+                        conn.commit()
+                        conn.close()
+                        orb.log.info(' - added public key for "{}".'.format(
+                                     data['id']))
                 orb.log.info('   new person oid: {}'.format(person.oid))
                 orb.log.info('               id: {}'.format(person.id))
                 orb.log.info('   publishing "person added" on admin channel.')

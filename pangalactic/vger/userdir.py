@@ -106,8 +106,19 @@ def search_ldap_directory(ldap_url, base_dn, test=None, **kw):
     orb.log.info('  kw = {}'.format(str(kw)))
     # the search string, f, is ok as a python 3 string (unicode)
     schema = config.get('ldap_schema')
+    if not schema:
+        # if no schema is configured, use a default LDAP schema
+        schema = {'UUPIC': 'oid',
+                  'AUID': 'id',
+                  'First Name': 'first_name',
+                  'Last Name': 'last_name',
+                  'MI or Name': 'mi_or_name',
+                  'Email': 'email',
+                  'Employer': 'employer_name',
+                  'Code': 'org_code'}
+        config['ldap_schema'] = schema.copy()
     orb.log.info('  ldap_schema = {}'.format(str(schema)))
-    ldap_required_fields = config.get('ldap_required_fields')
+    ldap_required_fields = '(nasaIdentityStatus=Active)(objectClass=person)'
     orb.log.info('  ldap_required_fields = {}'.format(ldap_required_fields))
     if schema and ldap_required_fields:
         f = ''
