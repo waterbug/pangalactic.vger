@@ -1088,7 +1088,8 @@ class RepositoryService(ApplicationSession):
                 if existing_person:
                     # TODO: if person is in the repo, update with data ...
                     orb.log.info('      person is in the repo; updating ...')
-                orb.log.info('      person is not in the repo; adding ...')
+                else:
+                    orb.log.info('      person is not in the repo; adding ...')
                 saved_objs = []
                 admin = orb.get('pgefobjects:admin')
                 dts = dtstamp()
@@ -1130,22 +1131,24 @@ class RepositoryService(ApplicationSession):
                         orb.save([org], recompute=False)
                         data['org'] = org
                         saved_objs.append(org)
+                public_key = data.pop('public_key', '')
                 Person = orb.classes['Person']
                 person = Person(creator=admin, modifier=admin,
                                 create_datetime=dts, mod_datetime=dts, **data)
                 orb.save([person], recompute=False)
                 saved_objs.append(person)
-                if data.get('public_key'):
-                    db_path = '/node/principals.db'
-                    if not os.path.exists(db_path):
+                if public_key:
+                    auth_db_path = config.get('auth_db_path',
+                                              '/node/principals.db')
+                    if not os.path.exists(auth_db_path):
                         orb.log.info(' - "/node/principals.db" not found.')
                     else:
                         # TODO: use a try/except block here ...
                         # add pk to principals db
-                        conn = sqlite3.connect(db_path)
+                        conn = sqlite3.connect(auth_db_path)
                         c = conn.cursor()
                         c.execute('INSERT INTO users VALUES (?, ?, ?)',
-                            (data['public_key'], data['id'], data['role']))
+                            (public_key, data['id'], data['role']))
                         conn.commit()
                         conn.close()
                         orb.log.info(' - added public key for "{}".'.format(
