@@ -1086,8 +1086,8 @@ class RepositoryService(ApplicationSession):
                 # check if person is already in db ...
                 existing_person = orb.get(data.get('oid'))
                 if existing_person:
-                    orb.log.info('      not adding: person is in the repo.')
-                    return []
+                    # TODO: if person is in the repo, update with data ...
+                    orb.log.info('      person is in the repo; updating ...')
                 orb.log.info('      person is not in the repo; adding ...')
                 saved_objs = []
                 admin = orb.get('pgefobjects:admin')

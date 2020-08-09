@@ -99,28 +99,20 @@ def search_ldap_directory(ldap_url, base_dn, test=None, **kw):
         test (str):  default is None; values can be "search" to return the
             search string for inspection or "result" to return an example
             result to test the client's handling of it
+
+    Return:
+        tuple: (LDAP search string (str), result records (list of dict))
     """
     orb.log.info('* userdir: search_ldap_directory()')
     orb.log.info('  ldap_url = {}'.format(ldap_url))
     orb.log.info('  base_dn  = {}'.format(base_dn))
     orb.log.info('  kw = {}'.format(str(kw)))
     # the search string, f, is ok as a python 3 string (unicode)
-    schema = config.get('ldap_schema')
-    if not schema:
-        # if no schema is configured, use a default LDAP schema
-        schema = {'UUPIC': 'oid',
-                  'AUID': 'id',
-                  'First Name': 'first_name',
-                  'Last Name': 'last_name',
-                  'MI or Name': 'mi_or_name',
-                  'Email': 'email',
-                  'Employer': 'employer_name',
-                  'Code': 'org_code'}
-        config['ldap_schema'] = schema.copy()
+    schema = config.get('ldap_schema', {})
     orb.log.info('  ldap_schema = {}'.format(str(schema)))
-    ldap_required_fields = '(nasaIdentityStatus=Active)(objectClass=person)'
-    orb.log.info('  ldap_required_fields = {}'.format(ldap_required_fields))
-    if schema and ldap_required_fields:
+    ldap_req_fields = config.get('ldap_req_fields', '')
+    orb.log.info('  ldap_req_fields = {}'.format(ldap_req_fields))
+    if schema:
         f = ''
         valid_fields = {schema[a]:a for a in schema}
         if kw and valid_fields:
@@ -129,62 +121,63 @@ def search_ldap_directory(ldap_url, base_dn, test=None, **kw):
                             if a in valid_fields]
             for ldap_field, value in valid_values:
                 f += '({}={})'.format(ldap_field, value)
-        f += ldap_required_fields
+        f += ldap_req_fields
     else:
-        # don't do the search if we didn't get kw args or don't have a schema
-        return []
+        # if we don't have a schema, set as test
+        test = 'search'
     # create a valid LDAP search string ...
     f = '(&'+f+')'
     if test == 'search':
-        # return the search string
-        return f
+        # return only the search string and an empty result
+        return (f, [])
     if test == 'result':
         # return an example result (Red Lectroids :)
-        return [dict(oid='test:carefulwalker', id='carefulwalker',
+        return (f,
+                [dict(oid='test:carefulwalker', id='carefulwalker',
                      last_name='Carefulwalker', first_name='John',
                      mi_or_name='D', name='John Carefulwalker',
                      org_code='890.0', employer_name='Yoyodyne',
                      email='John.Carefulwalker@yoyodyne.com'),
-                dict(oid='test:thornystick', id='thornystick',
-                     last_name='Thornystick', first_name='John',
-                     mi_or_name='T', name='John Thornystick',
-                     org_code='890.0', employer_name='Yoyodyne',
-                     email='John.Thornystick@yoyodyne.com'),
-                dict(oid='test:smallberries', id='smallberries',
-                     last_name='Smallberries', first_name='John',
-                     mi_or_name='R', name='John Smallberries',
-                     org_code='890.0', employer_name='Yoyodyne',
-                     email='John.Smallberries@yoyodyne.com'),
-                dict(
-                    oid='test:buckaroo', id='buckaroo',
-                    first_name='Buckaroo', mi_or_name='', last_name='Banzai',
-                    name='Buckaroo Banzai', org_code='890.0',
-                    email='buckaroo@banzai.earth.milkyway.univ',
-                    employer_name='Banzai'),
-                dict(
-                    oid='test:whorfin', id='whorfin',
-                    first_name='John', mi_or_name='', last_name='Whorfin',
-                    name='John Whorfin (Dr. Emilio Lizardo)', org_code='890.0',
-                    email='whorfin@redlectroids.planet10.univ',
-                    employer_name='Yoyodyne'),
-                dict(
-                    oid='test:bigboote', id='bigboote',
-                    first_name='John', mi_or_name='', last_name='Bigboote',
-                    name='John Bigboote', org_code='890.0',
-                    email='bigboote@redlectroids.planet10.univ',
-                    employer_name='Yoyodyne'),
-                dict(
-                    oid='test:manyjars', id='manyjars',
-                    first_name='John', mi_or_name='', last_name='Manyjars',
-                    name='John Manyjars', org_code='890.0',
-                    email='manyjars@redlectroids.planet10.univ',
-                    employer_name='Yoyodyne')
-                    ]
+                 dict(oid='test:thornystick', id='thornystick',
+                      last_name='Thornystick', first_name='John',
+                      mi_or_name='T', name='John Thornystick',
+                      org_code='890.0', employer_name='Yoyodyne',
+                      email='John.Thornystick@yoyodyne.com'),
+                 dict(oid='test:smallberries', id='smallberries',
+                      last_name='Smallberries', first_name='John',
+                      mi_or_name='R', name='John Smallberries',
+                      org_code='890.0', employer_name='Yoyodyne',
+                      email='John.Smallberries@yoyodyne.com'),
+                 dict(
+                     oid='test:buckaroo', id='buckaroo',
+                     first_name='Buckaroo', mi_or_name='', last_name='Banzai',
+                     name='Buckaroo Banzai', org_code='890.0',
+                     email='buckaroo@banzai.earth.milkyway.univ',
+                     employer_name='Banzai'),
+                 dict(
+                     oid='test:whorfin', id='whorfin',
+                     first_name='John', mi_or_name='', last_name='Whorfin',
+                     name='John Whorfin (Dr. Emilio Lizardo)', org_code='890.0',
+                     email='whorfin@redlectroids.planet10.univ',
+                     employer_name='Yoyodyne'),
+                 dict(
+                     oid='test:bigboote', id='bigboote',
+                     first_name='John', mi_or_name='', last_name='Bigboote',
+                     name='John Bigboote', org_code='890.0',
+                     email='bigboote@redlectroids.planet10.univ',
+                     employer_name='Yoyodyne'),
+                 dict(
+                     oid='test:manyjars', id='manyjars',
+                     first_name='John', mi_or_name='', last_name='Manyjars',
+                     name='John Manyjars', org_code='890.0',
+                     email='manyjars@redlectroids.planet10.univ',
+                     employer_name='Yoyodyne')
+                     ])
     # NOTE: the *field values* in res will be bytes
     res = search_by_filterstring(ldap_url, base_dn, f)
     people = []
     if res:
         for r in res:
             people.append(_get_dir_info(r[0]))
-    return people
+    return (f, people)
 
