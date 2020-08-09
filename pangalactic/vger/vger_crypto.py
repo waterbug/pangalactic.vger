@@ -1131,12 +1131,21 @@ class RepositoryService(ApplicationSession):
                         orb.save([org], recompute=False)
                         data['org'] = org
                         saved_objs.append(org)
+                # pull public key out of data before adding/updating user
                 public_key = data.pop('public_key', '')
-                Person = orb.classes['Person']
-                person = Person(creator=admin, modifier=admin,
-                                create_datetime=dts, mod_datetime=dts, **data)
-                orb.save([person], recompute=False)
-                saved_objs.append(person)
+                if existing_person:
+                    # update person
+                    for a in data:
+                        setattr(existing_person, a, data[a])
+                    existing_person.mod_datetime = dts
+                    orb.save([existing_person], recompute=False)
+                    saved_objs.append(existing_person)
+                else:
+                    Person = orb.classes['Person']
+                    person = Person(creator=admin, modifier=admin,
+                                    create_datetime=dts, mod_datetime=dts, **data)
+                    orb.save([person], recompute=False)
+                    saved_objs.append(person)
                 if public_key:
                     auth_db_path = config.get('auth_db_path',
                                               '/node/principals.db')
