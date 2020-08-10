@@ -1080,12 +1080,13 @@ class RepositoryService(ApplicationSession):
                     included in the returned list along with the Person object.
             """
             orb.log.info('[rpc] vger.add_person')
+            pk_added = False
             if data:
                 msg = 'called with data: {}'.format(str(data))
                 orb.log.info('    {}'.format(msg))
                 # check if person is already in db ...
-                existing_person = orb.get(data.get('oid'))
-                if existing_person:
+                person = orb.get(data.get('oid'))
+                if person:
                     # TODO: if person is in the repo, update with data ...
                     orb.log.info('      person is in the repo; updating ...')
                 else:
@@ -1133,14 +1134,15 @@ class RepositoryService(ApplicationSession):
                         saved_objs.append(org)
                 # pull public key out of data before adding/updating user
                 public_key = data.pop('public_key', '')
-                if existing_person:
+                if person:
                     # update person
                     for a in data:
-                        setattr(existing_person, a, data[a])
-                    existing_person.mod_datetime = dts
-                    orb.save([existing_person], recompute=False)
-                    saved_objs.append(existing_person)
+                        setattr(person, a, data[a])
+                    person.mod_datetime = dts
+                    orb.save([person], recompute=False)
+                    saved_objs.append(person)
                 else:
+                    # create person
                     Person = orb.classes['Person']
                     person = Person(creator=admin, modifier=admin,
                                     create_datetime=dts, mod_datetime=dts, **data)
@@ -1162,14 +1164,15 @@ class RepositoryService(ApplicationSession):
                         conn.close()
                         orb.log.info(' - added public key for "{}".'.format(
                                      data['id']))
+                        pk_added = True
                 orb.log.info('   new person oid: {}'.format(person.oid))
                 orb.log.info('               id: {}'.format(person.id))
-                orb.log.info('   publishing "person added" on admin channel.')
-                channel = 'vger.channel.admin'
+                orb.log.info('   publishing "person added" on public channel.')
+                channel = 'vger.channel.public'
                 self.publish(channel, {'person added': person.oid})
-                res = serialize(orb, saved_objs)
-                orb.log.info('   returning serialized objects: {}'.format(
-                                                                str(res)))
+                ser_objs = serialize(orb, saved_objs)
+                res = (pk_added, ser_objs)
+                orb.log.info('   returning result: {}'.format(str(res)))
                 return res
             else:
                 orb.log.info('      no data provided!')
@@ -1191,9 +1194,9 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_people, 'vger.get_people')
 
-
         # end of backend setup
         orb.log.info("procedures registered")
+
 
 if __name__ == '__main__':
 
