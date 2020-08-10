@@ -1150,14 +1150,14 @@ class RepositoryService(ApplicationSession):
                     auth_db_path = config.get('auth_db_path',
                                               '/node/principals.db')
                     if not os.path.exists(auth_db_path):
-                        orb.log.info(' - "/node/principals.db" not found.')
+                        orb.log.info(f' - "{auth_db_path}" not found.')
                     else:
                         # TODO: use a try/except block here ...
                         # add pk to principals db
                         conn = sqlite3.connect(auth_db_path)
                         c = conn.cursor()
                         c.execute('INSERT INTO users VALUES (?, ?, ?)',
-                            (public_key, data['id'], data['role']))
+                            (public_key, data['id'], 'user'))
                         conn.commit()
                         conn.close()
                         orb.log.info(' - added public key for "{}".'.format(
