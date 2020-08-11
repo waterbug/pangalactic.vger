@@ -67,46 +67,46 @@ class RepositoryService(ApplicationSession):
                   console=self.config.extra['console'])
         # always load test users steve, zaphod, buckaroo, whorfin
         if not state.get('test_users_loaded'):
-            orb.log.info('* [vger] loading test users ...')
+            orb.log.info('* loading test users ...')
             deserialize(orb, create_test_users())
             state['test_users_loaded'] = True
         else:
-            orb.log.info('* [vger] test users already loaded.')
+            orb.log.info('* test users already loaded.')
         if self.config.extra['test']:
             # check whether test objects have been loaded
             if state.get('test_project_loaded'):
-                orb.log.info('* [vger] H2G2 objects already loaded.')
+                orb.log.info('* H2G2 objects already loaded.')
             else:
                 # set default parms for create_test_project
-                orb.log.info('* [vger] loading H2G2 objects ...')
+                orb.log.info('* loading H2G2 objects ...')
                 deserialize(orb, create_test_project())
                 hw = orb.search_exact(cname='HardwareProduct', id_ns='test')
                 orb.assign_test_parameters(hw, parms=gsfc_mel_parms,
                                            des=gsfc_mel_des)
                 state['test_project_loaded'] = True
             write_state(os.path.join(orb.home, 'state'))
-        if config.get('load_extra_data'):
-            orb.log.info('* [vger] "load_extra_data" set, checking ...')
-            for fname in config['load_extra_data']:
-                if os.path.exists(os.path.join(orb.home, fname)):
-                    orb.log.info('         found "{}", loading ...'.format(
-                                                                    fname))
-                    fpath = os.path.join(orb.home, fname)
+        extra_data_path = os.path.join(orb.home, 'extra_data')
+        if os.path.exists(extra_data_path) and os.listdir(extra_data_path):
+            orb.log.info('* "extra_data" is present, checking ...')
+            for fname in os.listdir(extra_data_path):
+                if fname.endswith('.yaml'):
+                    orb.log.info(f' - found "{fname}", loading ...' )
+                    fpath = os.path.join(extra_data_path, fname)
                     with open(fpath) as f:
                         data = f.read()
                         sobjs = yaml.safe_load(data)
                         try:
                             objs = deserialize(orb, sobjs)
-                            orb.log.info('         success.')
+                            orb.log.info('   successfully deserialized.')
                             if objs:
                                 ids = [o.id for o in objs]
-                                orb.log.info('         loaded: {}'.format(
-                                                                str(ids)))
+                                orb.log.info('   loaded {} objs: {}'.format(
+                                             len(ids), str(ids)))
                             else:
                                 msg = '0 new or modified objs in data.'
-                                orb.log.info('         {}'.format(msg))
+                                orb.log.info('   {}'.format(msg))
                         except:
-                            orb.log.info('         deserialize() failed.')
+                            orb.log.info('   deserialize() failed.')
         dispatcher.connect(self.on_log_info_msg, 'log info msg')
         dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
         atexit.register(self.shutdown)
@@ -1149,11 +1149,10 @@ class RepositoryService(ApplicationSession):
                     orb.save([person], recompute=False)
                     saved_objs.append(person)
                 if public_key:
-                    auth_db_path = config.get('auth_db_path',
-                                              '/node/principals.db')
+                    default_db_path = os.path.join(orb.home, 'crossbar',
+                                                   'principals.db')
+                    auth_db_path = config.get('auth_db_path', default_db_path)
                     if not os.path.exists(auth_db_path):
-                        orb.log.info(f' - "{auth_db_path}" not found.')
-                    else:
                         # TODO: use a try/except block here ...
                         # add pk to principals db
                         conn = sqlite3.connect(auth_db_path)
@@ -1165,6 +1164,10 @@ class RepositoryService(ApplicationSession):
                         orb.log.info(' - added public key for "{}".'.format(
                                      data['id']))
                         pk_added = True
+                    else:
+                        orb.log.info(f' - "{auth_db_path}" not found ...')
+                        orb.log.info(f'   could not add public key.')
+                        pk_added = False
                 orb.log.info('   new person oid: {}'.format(person.oid))
                 orb.log.info('               id: {}'.format(person.id))
                 orb.log.info('   publishing "person added" on public channel.')
