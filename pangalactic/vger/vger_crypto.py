@@ -1152,7 +1152,7 @@ class RepositoryService(ApplicationSession):
                     default_db_path = os.path.join(orb.home, 'crossbar',
                                                    'principals.db')
                     auth_db_path = config.get('auth_db_path', default_db_path)
-                    if not os.path.exists(auth_db_path):
+                    if os.path.exists(auth_db_path):
                         # TODO: use a try/except block here ...
                         # add pk to principals db
                         conn = sqlite3.connect(auth_db_path)
@@ -1185,15 +1185,39 @@ class RepositoryService(ApplicationSession):
 
         def get_people():
             """
-            Get all Person objects.
+            Get all Person objects and their "active" status (i.e., whether
+            they have a public key in the crossbar authenticator's "principals"
+            database).
 
             Returns:
-                objs (list of dict):  if successful, a list containing
-                    the serialized Person objects.
+                list of tuples:  if successful, a list of
+                    (has_pk, serialized Person object) tuples, where has_pk is
+                    True if the person has a public key in the principals db.
             """
             orb.log.info('[rpc] vger.get_people')
             people = orb.get_by_type('Person')
-            return serialize(orb, people)
+            if people:
+                serialized_people = serialize(orb, people)
+                default_db_path = os.path.join(orb.home, 'crossbar',
+                                               'principals.db')
+                auth_db_path = config.get('auth_db_path', default_db_path)
+                if os.path.exists(auth_db_path):
+                    # TODO: use a try/except block here ...
+                    conn = sqlite3.connect(auth_db_path)
+                    c = conn.cursor()
+                    c.execute('SELECT * from users')
+                    active_users = c.fetchall()
+                    conn.commit()
+                    conn.close()
+                    active_user_ids = [au[1] for au in active_users]
+                    return [((sp['id'] in active_user_ids), sp)
+                            for sp in serialized_people]
+                else:
+                    orb.log.info(f' - "{auth_db_path}" not found ...')
+                    orb.log.info('   active users could not be determined.')
+                    return [(False, sp) for sp in serialized_people]
+            else:
+                return []
 
         yield self.register(get_people, 'vger.get_people')
 
