@@ -1179,7 +1179,7 @@ class RepositoryService(ApplicationSession):
                 return res
             else:
                 orb.log.info('      no data provided!')
-                return []
+                return [False, []]
 
         yield self.register(add_person, 'vger.add_person')
 
