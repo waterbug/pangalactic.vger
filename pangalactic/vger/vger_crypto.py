@@ -1065,8 +1065,8 @@ class RepositoryService(ApplicationSession):
                 users = []
                 for p in people:
                     user = {a: getattr(p, a) or '' for a in schema}
-                    user['name'] = ' '.join(user['first_name'],
-                                            user['last_name'])
+                    user['name'] = ' '.join([user['first_name'],
+                                             user['last_name']])
                     user['org_code'] = getattr(user.org, 'id', 'None')
                     user['employer_name'] = getattr(user.employer, 'id', 'None')
                     users.append(user)
