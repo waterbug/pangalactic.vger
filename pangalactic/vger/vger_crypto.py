@@ -1067,8 +1067,8 @@ class RepositoryService(ApplicationSession):
                     user = {a: getattr(p, a) or '' for a in schema}
                     user['name'] = ' '.join([user['first_name'],
                                              user['last_name']])
-                    user['org_code'] = getattr(user.org, 'id', 'None')
-                    user['employer_name'] = getattr(user.employer, 'id', 'None')
+                    user['org_code'] = getattr(p.org, 'id', 'None')
+                    user['employer_name'] = getattr(p.employer, 'id', 'None')
                     users.append(user)
                 return ['local users', users]
             else:
