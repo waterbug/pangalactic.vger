@@ -1054,10 +1054,23 @@ class RepositoryService(ApplicationSession):
             orb.log.info('[rpc] vger.search_ldap')
             ldap_url = config.get('ldap_url') or ''
             base_dn = config.get('base_dn') or ''
-            if (ldap_url and base_dn) or ('test' in kw and kw.get('test')):
+            if ldap_url and base_dn:
                 msg = 'calling search_ldap_directory() with {}'.format(kw)
                 orb.log.info('      {}'.format(msg))
                 return search_ldap_directory(ldap_url, base_dn, **kw)
+            elif 'test' in kw and kw.get('test'):
+                people = orb.get_by_type('Person')
+                schema = ['oid', 'id', 'last_name', 'first_name', 'mi_or_name',
+                          'email']
+                users = []
+                for p in people:
+                    user = {a: getattr(p, a) or '' for a in schema}
+                    user['name'] = ' '.join(user['first_name'],
+                                            user['last_name'])
+                    user['org_code'] = getattr(user.org, 'id', 'None')
+                    user['employer_name'] = getattr(user.employer, 'id', 'None')
+                    users.append(user)
+                return ['local users', users]
             else:
                 # TODO:  return a message that ldap is not available ...
                 orb.log.info('      ldap is not available')
