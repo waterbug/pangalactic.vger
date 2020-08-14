@@ -1060,11 +1060,12 @@ class RepositoryService(ApplicationSession):
                 return search_ldap_directory(ldap_url, base_dn, **kw)
             elif 'test' in kw and kw.get('test'):
                 people = orb.get_by_type('Person')
-                schema = ['oid', 'id', 'last_name', 'first_name', 'mi_or_name',
-                          'email']
+                attrs = ['oid', 'id', 'last_name', 'first_name', 'mi_or_name',
+                         'email']
                 users = []
                 for p in people:
-                    user = {a: getattr(p, a) or '' for a in schema}
+                    # make "users" conform to the standard search return schema
+                    user = {a: getattr(p, a) or '' for a in attrs}
                     user['name'] = ' '.join([user['first_name'],
                                              user['last_name']])
                     user['org_code'] = getattr(p.org, 'id', 'None')
