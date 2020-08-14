@@ -1223,7 +1223,7 @@ class RepositoryService(ApplicationSession):
                     conn.commit()
                     conn.close()
                     active_user_ids = [au[1] for au in active_users]
-                    msg = 'returning {} records ({} active users)'.format(
+                    msg = 'returning {} people ({} active users)'.format(
                                             len(people), len(active_users))
                     orb.log.info(f'      {msg}')
                     return [((sp['id'] in active_user_ids), sp)
