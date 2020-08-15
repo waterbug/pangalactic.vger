@@ -1,8 +1,5 @@
-"""
-Authentication "worker" module for the crossbar server, implementing
-authentication for use with the 'test_vger' testing module.
-"""
-from pprint import pprint
+# -*- coding: utf-8 -*-
+import json, os, sqlite3
 
 from twisted.internet.defer import inlineCallbacks
 
@@ -10,107 +7,69 @@ from autobahn.twisted.wamp import ApplicationSession
 from autobahn.wamp.exception import ApplicationError
 
 
-# our principal "database"
-PRINCIPALS_DB = {
-    'service1': {
-        'realm': 'pangalactic-services',
-        'role': 'service',
-        'ticket': '789secret'
-    },
-    'service2': {
-        'realm': 'pangalactic-services',
-        'role': 'service',
-        'ticket': '987secret'
-    },
-    'steve': {
-        'realm': 'pangalactic-services',
-        'role': 'user',
-        'ticket': '1234'
-    },
-    'fester': {
-        'realm': 'pangalactic-services',
-        'role': 'user',
-        'ticket': '1234'
-    },
-    'zaphod': {
-        'realm': 'pangalactic-services',
-        'role': 'user',
-        'ticket': '1234'
-    },
-    'buckaroo': {
-        'realm': 'pangalactic-services',
-        'role': 'user',
-        'ticket': '1234'
-    },
-    'whorfin': {
-        'realm': 'pangalactic-services',
-        'role': 'user',
-        'ticket': '1234'
-    },
-    'bigboote': {
-        'realm': 'pangalactic-services',
-        'role': 'user',
-        'ticket': '1234'
-    },
-    'smallberries': {
-        'realm': 'pangalactic-services',
-        'role': 'user',
-        'ticket': '1234'
-    },
-    'thornystick': {
-        'realm': 'pangalactic-services',
-        'role': 'user',
-        'ticket': '1234'
-    },
-    'manyjars': {
-        'realm': 'pangalactic-services',
-        'role': 'user',
-        'ticket': '1234'
-    }
-}
-
-
 class AuthenticatorSession(ApplicationSession):
 
     @inlineCallbacks
     def onJoin(self, details):
 
-        print("WAMP-Ticket dynamic authenticator joined: {}".format(details))
+        # if db does not exist, initialize it with test principals ...
+        if (os.path.exists('/node/principals.json')
+            and not os.path.exists('/node/principals.db')):
+            f = open('/node/principals.json')
+            PRINCIPALS = json.load(f)
+            f.close()
+            conn = sqlite3.connect('/node/principals.db')
+            c = conn.cursor()
+            c.execute('''CREATE TABLE users
+                         (pubkey blob, authid text, role text)''')
+            recs = [(p['pubkey'], p['authid'], p['role']) for p in PRINCIPALS]
+            c.executemany('INSERT INTO users VALUES (?, ?, ?)', recs)
+            conn.commit()
+            conn.close()
 
+        # dynamic authentication procedure
         def authenticate(realm, authid, details):
-            # TODO:  implement logging rather than prints
-            print("WAMP-Ticket dynamic authenticator invoked:")
-            print(" - realm='{}', authid='{}', details=".format(realm, authid))
-            pprint(details)
-            if authid in PRINCIPALS_DB:
-                ticket = details['ticket']
-                principal = PRINCIPALS_DB[authid]
+            self.log.debug("authenticate({realm}, {authid}, {details})",
+                           realm=realm, authid=authid, details=details)
+            assert('authmethod' in details)
+            assert(details['authmethod'] == 'cryptosign')
+            assert('authextra' in details)
+            assert('pubkey' in details['authextra'])
+            pubkey = details['authextra']['pubkey']
+            self.log.info("authenticating session with public key = {pubkey}",
+                          pubkey=pubkey)
 
-                if ticket != principal['ticket']:
-                    raise ApplicationError('com.example.invalid_ticket',
-                          "could not authenticate session - "
-                          "invalid ticket '{}' for principal {}".format(
-                                                            ticket, authid))
-                if realm and realm != principal['realm']:
-                    raise ApplicationError('com.example_invalid_realm',
-                            "user {} should join {}, not {}".format(authid,
-                                                principal['realm'], realm))
-                res = {
-                    'realm': principal['realm'],
-                    'role': principal['role'],
-                    'extra': {
-                        'my-custom-welcome-data': [1, 2, 3]
-                    }
-                }
-                print("WAMP-Ticket authentication success: {}".format(res))
-                return res
+            conn = sqlite3.connect('/node/principals.db')
+            c = conn.cursor()
+            c.execute('SELECT authid, role FROM users WHERE pubkey = ?',
+                      (pubkey,))
+            res = c.fetchone()
+            conn.close()
+            if res:
+                authid, role = res
             else:
-                raise ApplicationError("com.example.no_such_user",
-                                       "could not authenticate session - "
-                                       "no such principal {}".format(authid))
+                authid, role = None, None
+            if authid:
+                auth = {
+                   'pubkey': pubkey,
+                   'realm': 'pangalactic-services',
+                   'authid': authid,
+                   'role': role,
+                   'cache': True
+                }
+                self.log.info(
+                    "found valid principal {authid} matching public key",
+                    authid=authid)
+                return auth
+            else:
+                self.log.error("no principal found matching public key")
+                raise ApplicationError('pangalactic.no_such_user',
+                                      'no principal with matching public')
+
+        # register the authenticator
         try:
-            yield self.register(authenticate, 'pgef.authenticate')
-            print("WAMP-Ticket dynamic authenticator registered!")
+            yield self.register(authenticate, 'pangalactic.authenticate')
+            self.log.info("Dynamic authenticator registered!")
         except Exception as e:
-            print("Failed to register dynamic authenticator: {0}".format(e))
+            self.log.info("Failed to register authenticator: {0}".format(e))
 
