@@ -961,7 +961,7 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_object, 'vger.get_mod_dts')
 
-        def get_user_roles(userid, data=None):
+        def get_user_roles(userid, data=None, cb_details=None):
             """
             Get [0] the Person object that corresponds to the userid, [1] all
             Organization and Project objects, [2] all Person objects, and [3]
@@ -969,9 +969,13 @@ class RepositoryService(ApplicationSession):
 
             Args:
                 userid (str):  userid of a person (Person.id)
+                    NOTE: the "userid" arg is a remnant of ticket-based
+                    authentication; it is now ignored in favor of the
+                    "caller_authid" from cb_details
                 data (dict):  dict {oid: str(mod_datetime)}
                     for the requestor's Person, Organization, Project, and
                     RoleAssignment objects
+                cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
                 tuple of lists:  [0] serialized user (Person) object,
@@ -983,6 +987,7 @@ class RepositoryService(ApplicationSession):
             data = data or {}
             same_dts = []
             unknown_oids = []
+            userid = getattr(cb_details, 'caller_authid', '')
             if data:
                 server_dts = orb.get_mod_dts(oids=list(data))
                 for oid in data:
@@ -1023,7 +1028,8 @@ class RepositoryService(ApplicationSession):
                 szd_ras = serialize(orb, ras)
             return [szd_user, szd_orgs, szd_people, szd_ras, unknown_oids]
 
-        yield self.register(get_user_roles, 'vger.get_user_roles')
+        yield self.register(get_user_roles, 'vger.get_user_roles',
+                            RegisterOptions(details_arg='cb_details'))
 
         def get_user_object(userid):
             """
@@ -1080,7 +1086,7 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(search_ldap, 'vger.search_ldap')
 
-        def add_person(data):
+        def add_person(data, cb_details=None):
             """
             Add a new Person (user) based on a set of attribute data.
 
@@ -1096,7 +1102,14 @@ class RepositoryService(ApplicationSession):
             """
             orb.log.info('* [rpc] vger.add_person')
             pk_added = False
-            if data:
+            userid = getattr(cb_details, 'caller_authid', '')
+            user = orb.select('Person', id=userid)
+            # check that the caller is a Global Admin
+            admin_role = orb.get('pgefobjects:Role.Administrator')
+            global_admin = bool(orb.select('RoleAssignment', assigned_to=user,
+                                assigned_role=admin_role,
+                                role_assignment_context=None))
+            if global_admin and data:
                 msg = 'called with data: {}'.format(str(data))
                 orb.log.info('    {}'.format(msg))
                 # check if person is already in db ...
@@ -1193,10 +1206,14 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('  returning result: {}'.format(str(res)))
                 return res
             else:
-                orb.log.info('  no data provided!')
+                if not global_admin:
+                    orb.log.info('  not global admin -- unauthorized!')
+                elif not data:
+                    orb.log.info('  no data provided!')
                 return [False, []]
 
-        yield self.register(add_person, 'vger.add_person')
+        yield self.register(add_person, 'vger.add_person',
+                            RegisterOptions(details_arg='cb_details'))
 
         def get_people():
             """
