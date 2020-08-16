@@ -90,23 +90,23 @@ class RepositoryService(ApplicationSession):
             orb.log.info('* "extra_data" is present, checking ...')
             for fname in os.listdir(extra_data_path):
                 if fname.endswith('.yaml'):
-                    orb.log.info(f' - found "{fname}", loading ...')
+                    orb.log.info(f'  - found "{fname}", loading ...')
                     fpath = os.path.join(extra_data_path, fname)
                     with open(fpath) as f:
                         data = f.read()
                         sobjs = yaml.safe_load(data)
                         try:
                             objs = deserialize(orb, sobjs)
-                            orb.log.info('   successfully deserialized.')
+                            orb.log.info('    successfully deserialized.')
                             if objs:
                                 ids = [o.id for o in objs]
-                                orb.log.info('   loaded {} objs: {}'.format(
+                                orb.log.info('    loaded {} objs: {}'.format(
                                              len(ids), str(ids)))
                             else:
                                 msg = '0 new or modified objs in data.'
                                 orb.log.info('   {}'.format(msg))
                         except:
-                            orb.log.info('   deserialize() failed.')
+                            orb.log.info('    deserialize() failed.')
         dispatcher.connect(self.on_log_info_msg, 'log info msg')
         dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
         atexit.register(self.shutdown)
@@ -115,11 +115,11 @@ class RepositoryService(ApplicationSession):
             self._key = cryptosign.SigningKey.from_raw_key(
                                                     self.config.extra['key'])
         except Exception as e:
-            self.log.error("could not load public key: {log_failure}",
+            self.log.error("* could not load public key: {log_failure}",
                            log_failure=e)
             self.leave()
         else:
-            self.log.info("public key loaded: {}".format(
+            self.log.info("* public key loaded: {}".format(
                                                     self._key.public_key()))
 
     def on_log_info_msg(self, msg=''):
@@ -168,7 +168,7 @@ class RepositoryService(ApplicationSession):
                   authextra=extra)
 
     def onChallenge(self, challenge):
-        self.log.info("authentication challenge received ...")
+        self.log.info("* authentication challenge received ...")
         # sign the challenge with our private key.
         signed_challenge = self._key.sign_challenge(self, challenge)
         # send back the signed challenge for verification
@@ -200,7 +200,7 @@ class RepositoryService(ApplicationSession):
         try:
             yield self.subscribe(self.on_vger_msg, 'vger.channel.public')
         except:
-            orb.log.info("  subscription to vger.channel.public failed.")
+            orb.log.info("  subscribe to vger.channel.public failed.")
 
         def assign_role(serialized_ra, cb_details=None):
             """
@@ -223,7 +223,7 @@ class RepositoryService(ApplicationSession):
                                       ...}
                                       }
             """
-            orb.log.info('[rpc] vger.assign_role() ...')
+            orb.log.info('* [rpc] vger.assign_role() ...')
             if not serialized_ra:
                 orb.log.info('  called with nothing; returning.')
                 return {'result': 'nothing saved.'}
@@ -308,7 +308,7 @@ class RepositoryService(ApplicationSession):
                    'no_owners': [ids of objects that did not have owners but
                                  should]
             """
-            orb.log.info('[rpc] vger.save() ...')
+            orb.log.info('* [rpc] vger.save() ...')
             no_owners = []
             if not serialized_objs:
                 orb.log.info('  called with nothing.')
@@ -560,7 +560,7 @@ class RepositoryService(ApplicationSession):
                     [2]:  oids of server objects with earlier mod_datetime(s)
                     [3]:  any oids in data that were not found on the server
             """
-            orb.log.info('[rpc] vger.sync_objects()')
+            orb.log.info('* [rpc] vger.sync_objects()')
             result = [[], [], [], []]
             # remove any refdata
             non_ref = set(data.keys()) - set(ref_oids)
@@ -634,7 +634,7 @@ class RepositoryService(ApplicationSession):
                           [a] not created by the user or
                           [b] created by the user but are in 'trash'.
             """
-            orb.log.info('[rpc] vger.sync_library_objects()')
+            orb.log.info('* [rpc] vger.sync_library_objects()')
             orb.log.info('  data: {}'.format(str(data)))
 
             # TODO: user object will be needed when more than "public" objects
@@ -713,7 +713,7 @@ class RepositoryService(ApplicationSession):
                     [2]:  oids of server objects with earlier mod_datetime(s)
                     [3]:  any oids in data that were not found on the server
             """
-            orb.log.info('[rpc] vger.sync_project() ...')
+            orb.log.info('* [rpc] vger.sync_project() ...')
             orb.log.info('   project oid: {}'.format(str(project_oid)))
             orb.log.info('   data: {}'.format(str(data)))
             result = [[], [], [], []]
@@ -774,16 +774,16 @@ class RepositoryService(ApplicationSession):
             Return:
                 result (str):  'success'
             """
-            orb.log.info('[rpc] vger.data_new_row() ...')
-            orb.log.info('   project id: {}'.format(str(proj_id)))
-            orb.log.info('   dm oid: {}'.format(str(dm_oid)))
-            orb.log.info('   row_oid: {}'.format(str(row_oid)))
+            orb.log.info('* [rpc] vger.data_new_row() ...')
+            orb.log.info('  project id: {}'.format(str(proj_id)))
+            orb.log.info('  dm oid: {}'.format(str(dm_oid)))
+            orb.log.info('  row_oid: {}'.format(str(row_oid)))
             # TODO:  update local copy of datamatrix ...
             # For now, just publish!
             # publish item on project channel
             channel = 'vger.channel.' + proj_id
             txt = 'publishing new row oid on channel "{}" ...'
-            orb.log.info('   + {}'.format(txt.format(channel)))
+            orb.log.info('  + {}'.format(txt.format(channel)))
             self.publish(channel,
                          {'data new row':
                           [proj_id, dm_oid, row_oid]})
@@ -803,18 +803,18 @@ class RepositoryService(ApplicationSession):
             Return:
                 result (str):  'success'
             """
-            orb.log.info('[rpc] vger.data_update_item() ...')
-            orb.log.info('   project id: {}'.format(str(proj_id)))
-            orb.log.info('   dm oid: {}'.format(str(dm_oid)))
-            orb.log.info('   row_oid: {}'.format(str(row_oid)))
-            orb.log.info('   col_id: {}'.format(str(col_id)))
-            orb.log.info('   value: {}'.format(str(value)))
+            orb.log.info('* [rpc] vger.data_update_item() ...')
+            orb.log.info('  project id: {}'.format(str(proj_id)))
+            orb.log.info('  dm oid: {}'.format(str(dm_oid)))
+            orb.log.info('  row_oid: {}'.format(str(row_oid)))
+            orb.log.info('  col_id: {}'.format(str(col_id)))
+            orb.log.info('  value: {}'.format(str(value)))
             # TODO:  update local copy of datamatrix ...
             # For now, just publish!
             # publish item on project channel
             channel = 'vger.channel.' + proj_id
             txt = 'publishing data item on channel "{}" ...'
-            orb.log.info('   + {}'.format(txt.format(channel)))
+            orb.log.info('  + {}'.format(txt.format(channel)))
             self.publish(channel,
                          {'data item updated':
                           [proj_id, dm_oid, row_oid, col_id, value]})
@@ -837,7 +837,7 @@ class RepositoryService(ApplicationSession):
             Returns:
                 list:  the objects found by the search
             """
-            orb.log.info('[rpc] vger.search_exact() ...')
+            orb.log.info('* [rpc] vger.search_exact() ...')
             return serialize(orb, orb.search_exact(**kw))
 
         yield self.register(search_exact, 'vger.search_exact')
@@ -850,7 +850,7 @@ class RepositoryService(ApplicationSession):
             Returns:
                 tuple:  version (str), schema_change (bool)
             """
-            orb.log.info('[rpc] vger.get_version() ...')
+            orb.log.info('* [rpc] vger.get_version() ...')
             schema_change = bool(__version__ in schema_maps)
             return __version__, schema_change
 
@@ -874,7 +874,7 @@ class RepositoryService(ApplicationSession):
                     this will be a list that may include related objects. If no
                     object is found, returns an empty list
             """
-            orb.log.info('[rpc] vger.get_object({}) ...'.format(oid))
+            orb.log.info('* [rpc] vger.get_object({}) ...'.format(oid))
             userid = getattr(cb_details, 'caller_authid', '')
             # short-circuit requests for refdata ...
             if oid in ref_oids:
@@ -896,7 +896,7 @@ class RepositoryService(ApplicationSession):
                         return serialize(orb, [obj],
                                          include_components=include_components)
                     else:
-                        # orb.log.info('      not permitted for "{}".'.format(
+                        # orb.log.info('  not permitted for "{}".'.format(
                                                                     # userid))
                         return []
             else:
@@ -924,7 +924,7 @@ class RepositoryService(ApplicationSession):
                     because it will often include related objects). If no
                     object is found, an empty list is returned.
             """
-            orb.log.info('[rpc] vger.get_objects({}) ...'.format(oids))
+            orb.log.info('* [rpc] vger.get_objects({}) ...'.format(oids))
             # TODO: use get_perms() to determine authorization
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
@@ -955,7 +955,7 @@ class RepositoryService(ApplicationSession):
             Returns:
                 dict:  A dict mapping oids to 'mod_datetime' strings.
             """
-            orb.log.info('[rpc] vger.get_mod_dts() ...')
+            orb.log.info('* [rpc] vger.get_mod_dts() ...')
             return orb.get_mod_dts(cname=cname, oids=oids)
 
         yield self.register(get_object, 'vger.get_mod_dts')
@@ -978,7 +978,7 @@ class RepositoryService(ApplicationSession):
                                  [2] serialized Person objects
                                  [3] serialized RoleAssignment objects
             """
-            orb.log.info('[rpc] vger.get_user_roles({}) ...'.format(userid))
+            orb.log.info('* [rpc] vger.get_user_roles({}) ...'.format(userid))
             data = data or {}
             same_dts = []
             unknown_oids = []
@@ -1034,7 +1034,7 @@ class RepositoryService(ApplicationSession):
             Returns:
                 list:  list containing a serialized Person object
             """
-            orb.log.info('[rpc] vger.get_user_object()')
+            orb.log.info('* [rpc] vger.get_user_object()')
             return serialize(orb, [orb.select('Person', id=userid)])[0]
 
         yield self.register(get_user_object, 'vger.get_user_object')
@@ -1051,7 +1051,7 @@ class RepositoryService(ApplicationSession):
                 list:  list containing dicts of info on persons in the LDAP
                     directory
             """
-            orb.log.info('[rpc] vger.search_ldap')
+            orb.log.info('* [rpc] vger.search_ldap')
             ldap_url = config.get('ldap_url') or ''
             base_dn = config.get('base_dn') or ''
             if ldap_url and base_dn:
@@ -1093,7 +1093,7 @@ class RepositoryService(ApplicationSession):
                     the repository, objects for them will be created and
                     included in the returned list along with the Person object.
             """
-            orb.log.info('[rpc] vger.add_person')
+            orb.log.info('* [rpc] vger.add_person')
             pk_added = False
             if data:
                 msg = 'called with data: {}'.format(str(data))
@@ -1102,9 +1102,9 @@ class RepositoryService(ApplicationSession):
                 person = orb.get(data.get('oid'))
                 if person:
                     # TODO: if person is in the repo, update with data ...
-                    orb.log.info('      person is in the repo; updating ...')
+                    orb.log.info('  person is in the repo; updating ...')
                 else:
-                    orb.log.info('      person is not in the repo; adding ...')
+                    orb.log.info('  person is not in the repo; adding ...')
                 saved_objs = []
                 admin = orb.get('pgefobjects:admin')
                 dts = dtstamp()
@@ -1175,24 +1175,24 @@ class RepositoryService(ApplicationSession):
                             (public_key, data['id'], 'user'))
                         conn.commit()
                         conn.close()
-                        orb.log.info(' - added public key for "{}".'.format(
+                        orb.log.info('  - added public key for "{}".'.format(
                                      data['id']))
                         pk_added = True
                     else:
-                        orb.log.info(f' - "{auth_db_path}" not found ...')
-                        orb.log.info(f'   could not add public key.')
+                        orb.log.info(f'  - "{auth_db_path}" not found ...')
+                        orb.log.info(f'    could not add public key.')
                         pk_added = False
-                orb.log.info('   new person oid: {}'.format(person.oid))
-                orb.log.info('               id: {}'.format(person.id))
-                orb.log.info('   publishing "person added" on public channel.')
+                orb.log.info('    new person oid: {}'.format(person.oid))
+                orb.log.info('                id: {}'.format(person.id))
+                orb.log.info('    publishing "person added" on public channel.')
                 channel = 'vger.channel.public'
                 self.publish(channel, {'person added': person.oid})
                 ser_objs = serialize(orb, saved_objs)
                 res = (pk_added, ser_objs)
-                orb.log.info('   returning result: {}'.format(str(res)))
+                orb.log.info('  returning result: {}'.format(str(res)))
                 return res
             else:
-                orb.log.info('      no data provided!')
+                orb.log.info('  no data provided!')
                 return [False, []]
 
         yield self.register(add_person, 'vger.add_person')
@@ -1208,7 +1208,7 @@ class RepositoryService(ApplicationSession):
                     (has_pk, serialized Person object) tuples, where has_pk is
                     True if the person has a public key in the principals db.
             """
-            orb.log.info('[rpc] vger.get_people')
+            orb.log.info('* [rpc] vger.get_people')
             people = orb.get_by_type('Person')
             if people:
                 serialized_people = serialize(orb, people)
@@ -1226,12 +1226,12 @@ class RepositoryService(ApplicationSession):
                     active_user_ids = [au[1] for au in active_users]
                     msg = 'returning {} people ({} active users)'.format(
                                             len(people), len(active_users))
-                    orb.log.info(f'      {msg}')
+                    orb.log.info(f'  {msg}')
                     return [((sp['id'] in active_user_ids), sp)
                             for sp in serialized_people]
                 else:
-                    orb.log.info(f' - "{auth_db_path}" not found ...')
-                    orb.log.info('   active users could not be determined.')
+                    orb.log.info(f'  "{auth_db_path}" not found ...')
+                    orb.log.info('  active users could not be determined.')
                     return [(False, sp) for sp in serialized_people]
             else:
                 return []
