@@ -1,0 +1,13 @@
+BUILDING
+--------
+* check that 'build.sh' has correct version of vger
+* copy server cert for localhost into ./server_cert.pem
+* add a copy of the latest 'Miniconda3-latest-Linux-x86_64.sh'
+* add or copy a local 'config' file
+* add the vger private key file as 'vger.key'
+  (this corresponds to its public key in crossbar's "principals" database)
+* add or copy 'extra_data' directory containing .yaml files, if appropriate
+* copy 'run_vger_template.sh' to 'run_vger.sh' and edit so it has correct:
+  - version of vger image
+  - location for 'principals.db' (which vger writes to and crossbar
+    authenticator reads from)
