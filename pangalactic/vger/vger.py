@@ -584,7 +584,8 @@ class RepositoryService(ApplicationSession):
                 if earlier(client_dt, server_dt):
                     newer_oids.append(server_oid)
             for oid in newer_oids:
-                del dts_by_oid[oid]
+                if oid in dts_by_oid:
+                    del dts_by_oid[oid]
             # oids of server objects with same mod_datetime as submitted oids
             same_oids = [oid for oid, dt in dts_by_oid.items()
                          if dt == server_dts.get(oid)]
