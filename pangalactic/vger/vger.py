@@ -57,7 +57,7 @@ class RepositoryService(ApplicationSession):
         """
         NOTE:  orb home directory and database connection url must be
         specified.  The 'self.config.extra' dict is set from the 'extra'
-        keyword arg.
+        keyword arg in ApplicationRunner.
         """
         super(RepositoryService, self).__init__(*args, **kw)
         # start the orb ...
@@ -66,12 +66,9 @@ class RepositoryService(ApplicationSession):
                   debug=self.config.extra['debug'],
                   console=self.config.extra['console'])
         # always load test users steve, zaphod, buckaroo, whorfin
-        if not state.get('test_users_loaded'):
-            orb.log.info('* loading test users ...')
-            deserialize(orb, create_test_users())
-            state['test_users_loaded'] = True
-        else:
-            orb.log.info('* test users already loaded.')
+        orb.log.info('* checking for test users ...')
+        deserialize(orb, create_test_users())
+        orb.log.info('  test users loaded.')
         if self.config.extra['test']:
             # check whether test objects have been loaded
             if state.get('test_project_loaded'):
@@ -988,6 +985,7 @@ class RepositoryService(ApplicationSession):
             same_dts = []
             unknown_oids = []
             userid = getattr(cb_details, 'caller_authid', '')
+            orb.log.info(f'  userid: "{userid}" ...')
             if data:
                 server_dts = orb.get_mod_dts(oids=list(data))
                 for oid in data:
@@ -1011,6 +1009,8 @@ class RepositoryService(ApplicationSession):
             user = orb.select('Person', id=userid)
             if user:
                 szd_user = serialize(orb, [user])
+            else:
+                orb.log.info(f'  no Person object found for "{userid}".')
             # all Organizations *and* Projects
             all_orgs = orb.get_all_subtypes('Organization')
             orgs = [o for o in all_orgs if o.oid not in same_dts]
