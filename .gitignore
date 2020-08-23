@@ -15,6 +15,7 @@ syntax: glob
 *.egg
 *.orig
 *.pprj
+.crossbar
 build
 build.sh
 bump_version.sh
