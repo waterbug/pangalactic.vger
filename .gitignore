@@ -20,10 +20,12 @@ build
 build.sh
 bump_version.sh
 config
+Dockerfile
 extra_data
 run_vger.sh
 key.priv
 key.pub
+Miniconda-latest-Linux-x86_64.sh
 node.pid
 public.key
 private.key

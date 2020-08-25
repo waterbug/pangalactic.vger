@@ -5,28 +5,28 @@ FROM ubuntu
 RUN apt-get update \
  && apt-get install -y sudo
 
-# add the app user scred:pangalactic
+# add the app user crossbar:pangalactic
 RUN groupadd --gid 242 crossbar && \
-    useradd --gid 242 --uid 242 -d /home/scred -m scred
+    useradd --gid 242 --uid 242 -d /home/crossbar -m crossbar
 
-# add scred to 'sudo' group and sudo group to sudoers
-RUN usermod -a -G sudo scred && \
+# add crossbar to 'sudo' group and sudo group to sudoers
+RUN usermod -a -G sudo crossbar && \
     echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
 # create 'vger_home', which will be bind-mounted at runtime
-RUN mkdir -m 0775 /vger_home && chown -R scred:crossbar /vger_home
-RUN mkdir -m 0700 /vgerdb && chown -R scred:crossbar /vgerdb
+RUN mkdir -m 0775 /vger_home && chown -R crossbar:crossbar /vger_home
+RUN mkdir -m 0700 /vgerdb && chown -R crossbar:crossbar /vgerdb
 
-USER scred
-WORKDIR /home/scred
+USER crossbar
+WORKDIR /home/crossbar
 # to get a traceback for C crashes ...
 ENV PYTHONFAULTHANDLER=1
 ENV PGPORT=65432
 COPY Miniconda3-latest-Linux-x86_64.sh .
 COPY supervisord.conf .
 SHELL ["bash", "-c"]
-RUN bash Miniconda3-latest-Linux-x86_64.sh -b -p /home/scred/miniconda
-ENV PATH="/home/scred/miniconda/bin:$PATH"
+RUN bash Miniconda3-latest-Linux-x86_64.sh -b -p /home/crossbar/miniconda
+ENV PATH="/home/crossbar/miniconda/bin:$PATH"
 # expose the postgresql port
 EXPOSE 65432
 RUN conda update conda \
@@ -55,7 +55,7 @@ VOLUME /vgerdb
 #   [default values:  cb_host "localhost", cb_port "8080"]
 
 ### "shell form" of ENTRYPOINT
-ENTRYPOINT exec /usr/bin/sudo -u scred \
- /home/scred/miniconda/bin/supervisord -c \
- /home/scred/supervisord.conf
+ENTRYPOINT exec /usr/bin/sudo -u crossbar \
+ /home/crossbar/miniconda/bin/supervisord -c \
+ /home/crossbar/supervisord.conf
 

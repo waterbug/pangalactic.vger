@@ -1,16 +1,68 @@
-BUILDING
---------
+Deploying Dockerized crossbar and vger
+======================================
+
+Running the crossbar image with cryptosign auth over tls
+--------------------------------------------------------
+
+* set up a "home" directory for crossbar, e.g. /var/lib/crossbar, setting its
+  ownership to the crossbar user (uid 242) and group (gid 242).  Any files
+  added to the directory should be owned by that user and group.
+* create a '.crossbar' directory under the crossbar "home" directory
+* copy the file 'crossbar_config_crypto_tls.json' from the pangalactic.vger
+  repository (pangalactic.vger/pangalactic/vger) into the '.crossbar'
+  directory, renaming the file to 'config.json'
+* copy the file 'authenticator.py' from the pangalactic.vger
+  repository into the crossbar "home" directory.
+* copy the file 'principals.json.template' from the pangalactic.vger repository
+  (pangalactic.vger/pangalactic/vger) into the '.crossbar' directory under
+  crossbar's "home" directory, renaming the file to 'principals.json' and
+  editing it as appropriate to add the vger public key and an initial set of
+  users with public keys, including at least an initial Global Administrator
+  so that more users can be added at runtime.
+* add a certificate file and a key file for the host machine into the
+  '.crossbar' directory under crossbar's "home" directory, naming them
+  'server_cert.pem' and 'server_key.pem', respectively, and setting the
+  permissions on 'server_key.pem' to 400.
+
+Building and running the vger docker image
+------------------------------------------
+
+NOTE:  it is ok to do the build inside the 'docker' directory of the
+pangalactic.vger git repository -- git will ignore 'build.sh', 'Dockerfile',
+'Miniconda3-latest-Linux-x86_64.sh', and 'run_vger.sh'
+
 * copy 'build_template.sh' to 'build.sh'
 * set version of vger in 'build.sh' to the correct version
-* add a copy of the latest 'Miniconda3-latest-Linux-x86_64.sh'
-* create a local 'vger_home' directory
-  - copy server cert for localhost into 'vger_home/server_cert.pem'
-  - copy 'config_template' to 'vger_home/config' file and adjust
-  - add the vger private key file as 'vger_home/vger.key'
-    (this corresponds to its public key in crossbar's "principals" database)
-  - create 'vger_home/extra_data' directory containing .yaml files, if
-    appropriate
-* copy 'run_vger_template.sh' to 'run_vger.sh' and edit so it has correct:
-  - version of vger image
-  - location for 'principals.db' (which vger writes to and crossbar
-    authenticator reads from)
+* add a copy of the latest "miniconda" install script for python 3.7
+  and rename it to 'Miniconda3-latest-Linux-x86_64.sh'
+* copy 'Dockerfile_template' to 'Dockerfile' and modify as necessary (e.g.
+  setting the crossbar "home" directory)
+* create a local "home" directory for vger, e.g. /var/lib/vger, setting its
+  ownership to the crossbar user (uid 242) and group (gid 242).  Any files
+  added to the directory should be owned by that user and group.
+  - copy the server certificate file for the host into the vger "home"
+    directory, naming the file 'server_cert.pem'
+  - copy 'config_template' into the vger "home" directory, renaming it to
+    'config' and adjusting its contents as necessary.  (N.B.: "console: true"
+    will redirect output to stdout and will *not* write to the logs, so it
+    should only be use when the container is run interactively for testing, and
+    should not be used in production.)
+  - add the vger private key file as 'vger.key' (this must correspond to the
+    public key for the 'vger' user in crossbar's "principals" database)
+  - create an 'extra_data' directory inside the vger "home" directory.  Its
+    purpose is to hold .yaml files of any installation-specific serialized
+    objects that vger should load when starting up or restarting.
+* copy 'run_vger_template.sh' to 'run_vger.sh' and edit so it has the correct:
+  - version of the vger image
+  - location for 'principals.db', which will be in the crossbar "home"
+    directory.  (The crossbar authenticator module, 'authenticator.py',
+    creates, writes to and reads from 'principals.db' and vger writes to it,
+    which is why it is essential that the vger container runs as the same user
+    [uid 242] that is used by the crossbar container.)
+  - N.B.:  'run_vger.sh' should *only* be used when vger is initially started.
+    Thereafter, 'docker stop' and 'docker start' should be used to stop and
+    start the container (use 'docker ps' to locate the container and get its
+    status).  This is essential so that the vger database has continuity
+    between restarts -- the database lives in an anonymous docker volume that
+    is created by the container at startup.
+

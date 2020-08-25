@@ -1,0 +1,5 @@
+docker run \
+    -v [crossbar "home" dir]:/node \
+    -p 8080:8080 \
+    --name crossbar_crypto \
+    --rm crossbario/crossbar
