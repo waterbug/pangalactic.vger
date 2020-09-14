@@ -22,7 +22,8 @@ bump_version.sh
 config
 Dockerfile
 extra_data
-run_vger.sh
+run_vger_detached.sh
+run_vger_interactive.sh
 key.priv
 key.pub
 Miniconda3-latest-Linux-x86_64.sh
