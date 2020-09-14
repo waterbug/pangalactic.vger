@@ -29,7 +29,8 @@ Building and running the vger docker image
 
 NOTE:  it is ok to do the build inside the 'docker' directory of the
 pangalactic.vger git repository -- git will ignore 'build.sh', 'Dockerfile',
-'Miniconda3-latest-Linux-x86_64.sh', and 'run_vger.sh'
+'Miniconda3-latest-Linux-x86_64.sh', 'run_vger_detached.sh', and
+'run_vger_interactive.sh'
 
 * copy 'build_template.sh' to 'build.sh'
 * set version of vger in 'build.sh' to the correct version
@@ -56,20 +57,24 @@ pangalactic.vger git repository -- git will ignore 'build.sh', 'Dockerfile',
     objects that vger should load when starting up or restarting.
   - give group "crossbar" read/execute access to 'extra_data' and read access
     to any files it contains.
-* copy 'run_vger_template.sh' to 'run_vger.sh' and edit so it has the correct:
-  - version of the vger image
+* copy 'run_vger_interactive.template.sh' to 'run_vger_interactive.sh'
+  (or for production, copy 'run_vger_detached.template.sh' to
+  'run_vger_detached.sh') and edit so it has the correct:
+  - version spec for the vger image
   - location for 'principals.db', which will be in the crossbar "home"
     directory -- i.e., make sure the crossbar "home" directory (set in the
     crossbar docker image procedure above) is bind-mounted to
     '/vger_home/crossbar' (its location in the vger image).
-    NOTE:  The crossbar uses the authenticator module, 'authenticator.py',
-    to create, write to and read from 'principals.db' and vger writes to it,
-    which is why it is essential that the vger container runs internally as the
-    same user [uid 242] that the crossbar container runs as internally.)
-  - N.B.:  'run_vger.sh' should *only* be used for the initial start up of the
-    vger container.  Thereafter, 'docker stop' and 'docker start' should be
-    used to stop and start the container (use 'docker ps' to locate the
-    container and get its status).  This is essential so that the vger database
-    has continuity between restarts -- the database lives in an anonymous
-    docker volume that is created by the container at startup.
+    NOTE:  This crossbar is configured to use the authenticator module,
+    'authenticator.py', to create, write to and read from 'principals.db' and
+    vger writes to it, which is why it is essential that the vger container
+    runs internally as the same user [uid 242] that the crossbar container runs
+    as internally.
+  - N.B.:  'run_vger_detached.sh' should *only* be used for the initial start
+    up of the vger container.  Thereafter, 'docker stop' and 'docker start'
+    should be used to stop and start the container (use 'docker ps' to locate
+    the container and get its status).  This is essential so that the vger
+    database has continuity between restarts, because the database lives in an
+    anonymous docker volume that is created by the container at startup and is
+    "owned" by that container.
 
