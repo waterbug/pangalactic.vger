@@ -3,7 +3,7 @@
 """
 The Virtual Galactic Entropy Reverser
 """
-import argparse, atexit, os, sqlite3, sys
+import argparse, atexit, os, sqlite3, sys, traceback
 from uuid import uuid4
 
 import ruamel_yaml as yaml
@@ -1116,7 +1116,7 @@ class RepositoryService(ApplicationSession):
                 person = orb.get(data.get('oid'))
                 if person:
                     # TODO: if person is in the repo, update with data ...
-                    orb.log.info('  person is in the repo; updating ...')
+                    orb.log.info('  person is in the repo; will update ...')
                 else:
                     orb.log.info('  person is not in the repo; adding ...')
                 saved_objs = []
@@ -1162,6 +1162,8 @@ class RepositoryService(ApplicationSession):
                         saved_objs.append(org)
                 # pull public key out of data before adding/updating user
                 public_key = data.pop('public_key', '')
+                if public_key:
+                    orb.log.info('  public_key is present, will add ...')
                 if person:
                     # update person
                     for a in data:
@@ -1181,19 +1183,25 @@ class RepositoryService(ApplicationSession):
                                                    'principals.db')
                     auth_db_path = config.get('auth_db_path', default_db_path)
                     if os.path.exists(auth_db_path):
-                        # TODO: use a try/except block here ...
-                        # add pk to principals db
-                        conn = sqlite3.connect(auth_db_path)
-                        c = conn.cursor()
-                        c.execute('INSERT INTO users VALUES (?, ?, ?)',
-                            (public_key, data['id'], 'user'))
-                        conn.commit()
-                        conn.close()
-                        orb.log.info('  - added public key for "{}".'.format(
-                                     data['id']))
-                        pk_added = True
+                        try:
+                            # add pk to principals db
+                            conn = sqlite3.connect(auth_db_path)
+                            c = conn.cursor()
+                            c.execute('INSERT INTO users VALUES (?, ?, ?)',
+                                (public_key, data['id'], 'user'))
+                            conn.commit()
+                            conn.close()
+                            orb.log.info('  - added public key')
+                            orb.log.info('    for "{}".'.format(data['id']))
+                            pk_added = True
+                        except:
+                            orb.log.info('  - exception encountered when')
+                            orb.log.info('    attempting to add public key')
+                            orb.log.info('    for "{}":'.format(data['id']))
+                            orb.log.info(traceback.format_exc())
+                            pk_added = False
                     else:
-                        orb.log.info(f'  - "{auth_db_path}" not found ...')
+                        orb.log.info(f'  - path "{auth_db_path}" not found --')
                         orb.log.info(f'    could not add public key.')
                         pk_added = False
                 orb.log.info('    new person oid: {}'.format(person.oid))
