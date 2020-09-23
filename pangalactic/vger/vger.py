@@ -24,7 +24,9 @@ from pangalactic.core                  import __version__
 from pangalactic.core                  import (config, state, read_config,
                                                write_config, write_state)
 from pangalactic.core.access           import get_perms, is_cloaked
+from pangalactic.core.entity           import Entity
 from pangalactic.core.mapping          import schema_maps
+from pangalactic.core.parametrics      import set_dval, set_pval
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
                                                deserialize, serialize)
 from pangalactic.core.refdata          import ref_oids
@@ -65,7 +67,7 @@ class RepositoryService(ApplicationSession):
                   db_url=self.config.extra['db_url'],
                   debug=self.config.extra['debug'],
                   console=self.config.extra['console'])
-        # always load test users steve, zaphod, buckaroo, whorfin
+        # always load test users steve, zaphod, buckaroo, etc.
         orb.log.info('* checking for test users ...')
         deserialize(orb, create_test_users())
         orb.log.info('  test users loaded.')
@@ -549,6 +551,7 @@ class RepositoryService(ApplicationSession):
             Args:
                 data (dict):  dict {oid: str(mod_datetime)}
                     for the objects to be synced
+                cb_details:  added by crossbar; not included in rpc signature
 
             Return:
                 result (list of lists):  list containing:
@@ -619,6 +622,7 @@ class RepositoryService(ApplicationSession):
                 data (dict):  dict {oid: str(mod_datetime)}
                     containing the library objects that the user has (all
                     objects the user has that were not created by the user)
+                cb_details:  added by crossbar; not included in rpc signature
 
             Return:
                 result (list of lists):  list containing:
@@ -702,6 +706,7 @@ class RepositoryService(ApplicationSession):
                 project_oid (str):  oid of the project to be synced
                 data (dict):  dict {oid: str(mod_datetime)}
                     for known objects of the project to be synced
+                cb_details:  added by crossbar; not included in rpc signature
 
             Return:
                 result (list of lists):  list containing:
@@ -768,6 +773,7 @@ class RepositoryService(ApplicationSession):
                 proj_id (str):  id of the project
                 dm_oid (str):  oid of the DataMatrix
                 row_oid (str):  oid of the new row
+                cb_details:  added by crossbar; not included in rpc signature
 
             Return:
                 result (str):  'success'
@@ -797,6 +803,7 @@ class RepositoryService(ApplicationSession):
 
             Keyword Args:
                 proj_id (str):  id of the project
+                cb_details:  added by crossbar; not included in rpc signature
 
             Return:
                 result (str):  'success'
@@ -819,6 +826,119 @@ class RepositoryService(ApplicationSession):
             return 'success'
 
         yield self.register(data_update_item, 'vger.data_update_item',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def set_parameter(oid=None, pid=None, value=None, units=None,
+                          mod_datetime=None, cb_details=None):
+            """
+            Set a parameter value.
+
+            Keyword Args:
+                oid (str):  oid of the parent object or entity
+                pid (str):  parameter id
+                value (str):  string representation of the value
+                units (str):  string representation of the units
+                mod_datetime (str):  string representation of the modified
+                    datetime
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Return:
+                result (str):  'success'
+            """
+            argstr = f'oid={oid}, pid={pid}, value={value}, units={units}'
+            orb.log.info(f'* [rpc] set_parameter({argstr})')
+            # For now, just publish on public channel
+            set_pval(oid, pid, value, units=units, mod_datetime=mod_datetime)
+            channel = 'vger.channel.public'
+            orb.log.info(f'  + publishing parameter on "{channel}" ...')
+            self.publish(channel,
+                         {'parameter set':
+                          [oid, pid, value, units, mod_datetime]})
+            return 'success'
+
+        yield self.register(set_parameter, 'vger.set_parameter',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def set_data_element(oid=None, deid=None, value=None,
+                             mod_datetime=None, cb_details=None):
+            """
+            Set a data element value.
+
+            Keyword Args:
+                oid (str):  oid of the parent object or entity
+                deid (str):  data element id
+                value (str):  string representation of the value
+                mod_datetime (str):  string representation of the modified
+                    datetime
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Return:
+                result (str):  'success'
+            """
+            argstr = f'oid={oid}, deid={deid}, value={value}'
+            orb.log.info(f'* [rpc] set_data_element({argstr})')
+            # For now, just publish on public channel
+            set_dval(oid, deid, value, mod_datetime=mod_datetime)
+            channel = 'vger.channel.public'
+            orb.log.info(f'  + publishing data element on "{channel}" ...')
+            self.publish(channel,
+                         {'data element set':
+                          [oid, deid, value, mod_datetime]})
+            return 'success'
+
+        yield self.register(set_data_element, 'vger.set_data_element',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def create_entity(oid=None, creator=None, modifier=None,
+                          create_datetime=None, mod_datetime=None,
+                          owner=None, assembly_level=None, parent_oid=None,
+                          system_oid=None, system_name=None, cb_details=None):
+            """
+            Create a new entity.
+
+            Keyword Args:
+                oid (str):  oid of the parent object or entity
+                creator (str):  oid of the entity's creator
+                modifier (str):  oid of the entity's modifier
+                create_datetime (str):  string representation of the created
+                    datetime
+                mod_datetime (str):  string representation of the modified
+                    datetime
+                owner (str):  oid of the owner Organization
+                assembly_level (int):  level of assembly (for a MEL entity)
+                parent_oid (str):  oid of the parent entity
+                system_oid (str):  oid of the system represented (for a MEL
+                    entity)
+                system_name (str):  name of the system represented (for a MEL
+                    entity)
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Return:
+                result (str):  'success'
+            """
+            argstr = f'oid={oid}, creator={creator}, modifier={modifier}, '
+            argstr += f'create_datetime={create_datetime}, '
+            argstr += f'mod_datetime={mod_datetime}, owner={owner}, '
+            argstr += f'assembly_level={assembly_level}, '
+            argstr += f'parent_oid={parent_oid}, system_oid={system_oid}, '
+            argstr += f'system_name={system_name}'
+            orb.log.info(f'* [rpc] create_entity({argstr})')
+            Entity(oid=oid, creator=creator, modifier=modifier,
+                   create_datetime=create_datetime, mod_datetime=mod_datetime,
+                   owner=owner, assembly_level=assembly_level,
+                   parent_oid=parent_oid, system_oid=system_oid,
+                   system_name=system_name)
+            # For now, just publish on public channel
+            channel = 'vger.channel.public'
+            orb.log.info(f'  + publishing entity on "{channel}" ...')
+            self.publish(channel,
+                         {'entity created':
+                          [oid, creator, modifier, create_datetime,
+                           mod_datetime, owner, assembly_level, parent_oid,
+                           system_oid, system_name]})
+            return 'success'
+
+        yield self.register(create_entity, 'vger.create_entity',
                             RegisterOptions(details_arg='cb_details'))
 
         def search_exact(**kw):
