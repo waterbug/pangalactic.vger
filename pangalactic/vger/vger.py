@@ -237,18 +237,18 @@ class RepositoryService(ApplicationSession):
             orb.log.info('  caller authid: {}'.format(str(userid)))
             user_obj = orb.select('Person', id=userid)
             org_oid = ra_dict.get('role_assignment_context')
+            admin_role = orb.get('pgefobjects:Role.Administrator')
+            global_admin = orb.select('RoleAssignment',
+                                  assigned_role=admin_role,
+                                  assigned_to=user_obj,
+                                  role_assignment_context=None)
             if org_oid:
                 # is user an Administrator for this org or a global Admin?
                 org = orb.get(org_oid)
-                admin_role = orb.get('pgefobjects:Role.Administrator')
                 admin_ra = orb.select('RoleAssignment',
                                       assigned_role=admin_role,
                                       assigned_to=user_obj,
                                       role_assignment_context=org)
-                global_admin = orb.select('RoleAssignment',
-                                      assigned_role=admin_role,
-                                      assigned_to=user_obj,
-                                      role_assignment_context=None)
                 if admin_ra or global_admin:
                     orb.log.info('  role assignment is authorized, saving ...')
                     output = deserialize(orb, [ra_dict], dictify=True)
@@ -279,8 +279,28 @@ class RepositoryService(ApplicationSession):
                 else:
                     orb.log.info('  role assignment not authorized.')
             else:
-                orb.log.info('  no role_assignment_context found.')
-                return {'result': 'nothing saved.'}
+                # the ra is Global Admin, can only be assigned by another
+                # Global Admin ...
+                if global_admin:
+                    orb.log.info('  global admin assignment is authorized ...')
+                    output = deserialize(orb, [ra_dict], dictify=True)
+                    mod_ra_dts = {}
+                    new_ra_dts = {}
+                    # ignore mod_ra_dts (a global admin ra can be created or
+                    # deleted, but not modified)
+                    for new_ra in output['new']:
+                        orb.log.info('   new ra oid: {}'.format(new_ra.oid))
+                        orb.log.info('           id: {}'.format(new_ra.id))
+                        new_ra_dts[new_ra.oid] = str(new_ra.mod_datetime)
+                        log_msg = 'new ra {} on public channel.'.format(
+                                                                new_ra.id)
+                        orb.log.info('   {}'.format(log_msg))
+                        self.publish('vger.channel.public', {'decloaked':
+                                                      [new_ra.oid, new_ra.id]})
+                    return dict(new_obj_dts=new_ra_dts, mod_obj_dts=mod_ra_dts)
+                else:
+                    orb.log.info('  no role_assignment_context found.')
+                    return {'result': 'nothing saved.'}
 
         yield self.register(assign_role, 'vger.assign_role',
                             RegisterOptions(details_arg='cb_details'))
