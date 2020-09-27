@@ -87,7 +87,9 @@ class RepositoryService(ApplicationSession):
         extra_data_path = os.path.join(orb.home, 'extra_data')
         if os.path.exists(extra_data_path) and os.listdir(extra_data_path):
             orb.log.info('* "extra_data" is present, checking ...')
-            for fname in os.listdir(extra_data_path):
+            extra_data_fnames = os.listdir(extra_data_path)
+            extra_data_fnames.sort()
+            for fname in extra_data_fnames:
                 if fname.endswith('.yaml'):
                     orb.log.info(f'  - found "{fname}", loading ...')
                     fpath = os.path.join(extra_data_path, fname)
