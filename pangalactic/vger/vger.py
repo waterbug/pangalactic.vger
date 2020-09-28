@@ -96,19 +96,19 @@ class RepositoryService(ApplicationSession):
                     with open(fpath) as f:
                         data = f.read()
                         sobjs = yaml.safe_load(data)
-                        # TODO:  log deserialization exception tracebacks
-                        # try:
-                        objs = deserialize(orb, sobjs)
-                        orb.log.info('    successfully deserialized.')
-                        if objs:
-                            ids = [o.id for o in objs]
-                            orb.log.info('    loaded {} objs: {}'.format(
-                                         len(ids), str(ids)))
-                        else:
-                            msg = '0 new or modified objs in data.'
-                            orb.log.info('   {}'.format(msg))
-                        # except:
-                            # orb.log.info('    deserialize() failed.')
+                        try:
+                            objs = deserialize(orb, sobjs)
+                            orb.log.info('    successfully deserialized.')
+                            if objs:
+                                ids = [o.id for o in objs]
+                                orb.log.info('    loaded {} objs: {}'.format(
+                                             len(ids), str(ids)))
+                            else:
+                                msg = '0 new or modified objs in data.'
+                                orb.log.info('   {}'.format(msg))
+                        except:
+                            orb.log.info('    exception in deserializing ...')
+                            orb.log.info(traceback.format_exc())
         dispatcher.connect(self.on_log_info_msg, 'log info msg')
         dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
         atexit.register(self.shutdown)
