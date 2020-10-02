@@ -43,6 +43,7 @@ RUN conda update conda \
  # configure postgresql
  && initdb -D /vgerdb \
  && echo "port = 65432" >> /vgerdb/postgresql.conf \
+ && echo "client_encoding = utf8" >> /vgerdb/postgresql.conf \
  && pg_ctl -D /vgerdb start \
  && createdb vgerdb
 
