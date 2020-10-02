@@ -3,7 +3,7 @@ FROM ubuntu
 
 # need to explicitly add sudo package (docker ubuntu does not include)
 RUN apt-get update \
- && apt-get install -y sudo
+ && apt-get install -y locales sudo
 
 # add the app user crossbar:pangalactic
 RUN groupadd --gid 242 crossbar && \
