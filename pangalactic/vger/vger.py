@@ -84,6 +84,11 @@ class RepositoryService(ApplicationSession):
                                            des=gsfc_mel_des)
                 state['test_project_loaded'] = True
             write_state(os.path.join(orb.home, 'state'))
+        # create an "uploads" directory if there isn't one
+        self.uploads_path = os.path.join(orb.home, 'vault', 'uploads')
+        if not os.path.exists(self.uploads_path):
+            os.makedirs(self.uploads_path)
+        # load data from "extra_data" dir
         extra_data_path = os.path.join(orb.home, 'extra_data')
         if os.path.exists(extra_data_path) and os.listdir(extra_data_path):
             orb.log.info('* "extra_data" is present, checking ...')
@@ -105,7 +110,7 @@ class RepositoryService(ApplicationSession):
                                              len(ids), str(ids)))
                             else:
                                 msg = '0 new or modified objs in data.'
-                                orb.log.info('   {}'.format(msg))
+                                orb.log.info('    {}'.format(msg))
                         except:
                             orb.log.info('    exception in deserializing ...')
                             orb.log.info(traceback.format_exc())
@@ -306,6 +311,52 @@ class RepositoryService(ApplicationSession):
                     return {'result': 'nothing saved.'}
 
         yield self.register(assign_role, 'vger.assign_role',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def upload_chunk(fname=None, data=b'', cb_details=None):
+            """
+            Upload a chunk of file data.
+
+            Keyword Args:
+                fname (str):  name of the data's file
+                data (bytes):  data
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Return:
+                result (str):  'success'
+            """
+            n = len(data)
+            orb.log.info('* [rpc] vger.upload_chunk() ...')
+            orb.log.info(f'  fname: {fname}')
+            orb.log.info(f'  chunk size: {n}')
+            # write to file
+            fpath = os.path.join(self.uploads_path, fname)
+            with open(fpath, 'ab') as f:
+                f.write(data)
+            return 'success'
+
+        yield self.register(upload_chunk, 'vger.upload_chunk',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def save_uploaded_file(fname=None, oid=None, cb_details=None):
+            """
+            Finalize the upload of a file.
+
+            Keyword Args:
+                fname (str):  name of the data's file
+                oid (str):  oid of the object (typically a RepresentationFile
+                    instance) whose 'url' attr points to the data's file
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Return:
+                result (str):  'success'
+            """
+            orb.log.info('* [rpc] vger.save_uploaded_file() ...')
+            orb.log.info(f'  fname: {fname}')
+            # write to file
+            return 'success'
+
+        yield self.register(save_uploaded_file, 'vger.save_uploaded_file',
                             RegisterOptions(details_arg='cb_details'))
 
         def save(serialized_objs, cb_details=None):
