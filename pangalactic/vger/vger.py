@@ -313,12 +313,13 @@ class RepositoryService(ApplicationSession):
         yield self.register(assign_role, 'vger.assign_role',
                             RegisterOptions(details_arg='cb_details'))
 
-        def upload_chunk(fname=None, data=b'', cb_details=None):
+        def upload_chunk(fname=None, seq=0, data=b'', cb_details=None):
             """
             Upload a chunk of file data.
 
             Keyword Args:
                 fname (str):  name of the data's file
+                seq (int):  sequence number of chunk
                 data (bytes):  data
                 cb_details:  added by crossbar; not included in rpc signature
 
@@ -333,7 +334,7 @@ class RepositoryService(ApplicationSession):
             fpath = os.path.join(self.uploads_path, fname)
             with open(fpath, 'ab') as f:
                 f.write(data)
-            return 'success'
+            return seq
 
         yield self.register(upload_chunk, 'vger.upload_chunk',
                             RegisterOptions(details_arg='cb_details'))
