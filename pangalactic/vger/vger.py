@@ -196,9 +196,6 @@ class RepositoryService(ApplicationSession):
                 # obj_oid, obj_id = content
             # elif subject == 'modified':
                 # obj_oid, obj_id, obj_mod_datetime = content
-            # elif subject == 'organization':
-                # obj_oid = content['oid']
-                # obj_id = content['id']
 
     @inlineCallbacks
     def onJoin(self, details):
@@ -1399,12 +1396,12 @@ class RepositoryService(ApplicationSession):
                         orb.log.info(f'  - path "{auth_db_path}" not found --')
                         orb.log.info(f'    could not add public key.')
                         pk_added = False
+                ser_objs = serialize(orb, saved_objs)
                 orb.log.info('    new person oid: {}'.format(person.oid))
                 orb.log.info('                id: {}'.format(person.id))
                 orb.log.info('    publishing "person added" on public channel.')
                 channel = 'vger.channel.public'
-                self.publish(channel, {'person added': person.oid})
-                ser_objs = serialize(orb, saved_objs)
+                self.publish(channel, {'person added': ser_objs})
                 res = (pk_added, ser_objs)
                 orb.log.info('  returning result: {}'.format(str(res)))
                 return res
