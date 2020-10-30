@@ -961,12 +961,12 @@ class RepositoryService(ApplicationSession):
         yield self.register(set_data_element, 'vger.set_data_element',
                             RegisterOptions(details_arg='cb_details'))
 
-        def create_entity(oid=None, creator=None, modifier=None,
+        def save_entity(oid=None, creator=None, modifier=None,
                           create_datetime=None, mod_datetime=None,
                           owner=None, assembly_level=None, parent_oid=None,
                           system_oid=None, system_name=None, cb_details=None):
             """
-            Create a new entity.
+            Save a (new or modified) entity.
 
             Keyword Args:
                 oid (str):  oid of the parent object or entity
@@ -994,7 +994,7 @@ class RepositoryService(ApplicationSession):
             argstr += f'assembly_level={assembly_level}, '
             argstr += f'parent_oid={parent_oid}, system_oid={system_oid}, '
             argstr += f'system_name={system_name}'
-            orb.log.info(f'* [rpc] create_entity({argstr})')
+            orb.log.info(f'* [rpc] save_entity({argstr})')
             Entity(oid=oid, creator=creator, modifier=modifier,
                    create_datetime=create_datetime, mod_datetime=mod_datetime,
                    owner=owner, assembly_level=assembly_level,
@@ -1010,7 +1010,7 @@ class RepositoryService(ApplicationSession):
                            system_oid, system_name]})
             return 'success'
 
-        yield self.register(create_entity, 'vger.create_entity',
+        yield self.register(save_entity, 'vger.save_entity',
                             RegisterOptions(details_arg='cb_details'))
 
         def search_exact(**kw):
