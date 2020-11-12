@@ -144,7 +144,7 @@ class RepositoryService(ApplicationSession):
         parameter / data element caches after the server is restarted.
         """
         # first save the caches
-        orb.save_caches(orb.home)
+        orb.save_caches()
         # then backup everything
         orb.dump_all()
 
@@ -940,6 +940,7 @@ class RepositoryService(ApplicationSession):
                 oid (str):  oid of the parent object or entity
                 deid (str):  data element id
                 value (str):  string representation of the value
+                units (str):  string representation of the units
                 mod_datetime (str):  string representation of the modified
                     datetime
                 cb_details:  added by crossbar; not included in rpc signature
@@ -947,7 +948,7 @@ class RepositoryService(ApplicationSession):
             Return:
                 result (str):  'success'
             """
-            argstr = f'oid={oid}, deid={deid}, value={value}'
+            argstr = f'oid={oid}, deid={deid}, value={value}, units={units}'
             orb.log.info(f'* [rpc] set_data_element({argstr})')
             # For now, just publish on public channel
             set_dval(oid, deid, value, units=units, mod_datetime=mod_datetime)
