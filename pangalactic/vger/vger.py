@@ -916,12 +916,12 @@ class RepositoryService(ApplicationSession):
             Return:
                 result (str):  'success'
             """
-            argstr = f'oid={oid}, pid={pid}, value={value}, units={units}'
-            orb.log.info(f'* [rpc] set_parameter({argstr})')
+            # argstr = f'oid={oid}, pid={pid}, value={value}, units={units}'
+            # orb.log.info(f'* [rpc] set_parameter({argstr})')
             # For now, just publish on public channel
             set_pval(oid, pid, value, units=units, mod_datetime=mod_datetime)
             channel = 'vger.channel.public'
-            orb.log.info(f'  + publishing parameter on "{channel}" ...')
+            # orb.log.info(f'  + publishing parameter on "{channel}" ...')
             self.publish(channel,
                          {'parameter set':
                           [oid, pid, value, units, mod_datetime]})
@@ -947,12 +947,12 @@ class RepositoryService(ApplicationSession):
             Return:
                 result (str):  'success'
             """
-            argstr = f'oid={oid}, deid={deid}, value={value}, units={units}'
-            orb.log.info(f'* [rpc] set_data_element({argstr})')
+            # argstr = f'oid={oid}, deid={deid}, value={value}, units={units}'
+            # orb.log.info(f'* [rpc] set_data_element({argstr})')
             # For now, just publish on public channel
             set_dval(oid, deid, value, units=units, mod_datetime=mod_datetime)
             channel = 'vger.channel.public'
-            orb.log.info(f'  + publishing data element on "{channel}" ...')
+            # orb.log.info(f'  + publishing data element on "{channel}" ...')
             self.publish(channel,
                          {'data element set':
                           [oid, deid, value, mod_datetime]})
