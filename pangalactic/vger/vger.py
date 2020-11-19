@@ -137,15 +137,14 @@ class RepositoryService(ApplicationSession):
 
     def shutdown(self):
         """
-        Serialize all database objects to a json or yaml file (db.json|yaml)
-        and save all caches, putting all files into the `backup` directory.  If
-        the server is updated and the update includes a schema change, the orb
-        can read, convert, and import the db dump file into a new database and
-        parameter / data element caches after the server is restarted.
+        Serialize all database objects to a yaml file
+        (db-dump-[datetime stamp].yaml) and save all caches, putting all files
+        into the `backup` directory.  If the server is updated and the update
+        includes a schema change, the orb can read, convert, and import the db
+        dump file into a new database and parameter / data element caches after
+        the server is restarted.
         """
-        # first save the caches
-        orb.save_caches()
-        # then backup everything
+        # dump_all() saves all caches and writes db to a yaml file
         orb.dump_all()
 
     def onConnect(self):
