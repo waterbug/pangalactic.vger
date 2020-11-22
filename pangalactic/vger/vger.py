@@ -114,6 +114,7 @@ class RepositoryService(ApplicationSession):
                         except:
                             orb.log.info('    exception in deserializing ...')
                             orb.log.info(traceback.format_exc())
+        orb.dump_all()
         dispatcher.connect(self.on_log_info_msg, 'log info msg')
         dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
         atexit.register(self.shutdown)
