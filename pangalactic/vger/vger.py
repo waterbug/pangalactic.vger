@@ -322,7 +322,7 @@ class RepositoryService(ApplicationSession):
             Return:
                 result (str):  'success'
             """
-            n = len(data)
+            n = len(data or b'')
             orb.log.info('* [rpc] vger.upload_chunk() ...')
             orb.log.info(f'  fname: {fname}')
             orb.log.info(f'  chunk size: {n}')
@@ -631,23 +631,25 @@ class RepositoryService(ApplicationSession):
                     [2]:  oids of server objects with earlier mod_datetime(s)
                     [3]:  any oids in data that were not found on the server
             """
-            orb.log.info('* [rpc] vger.sync_objects()')
+            orb.log.info('* [rpc] vger.sync_objects(data)')
             result = [[], [], [], []]
+            if not data:
+                orb.log.info('  no data sent; returning empty result.')
+                return result
+            n = len(data)
+            orb.log.info(f'  received {n} items in data')
             # remove any refdata
             non_ref = set(data.keys()) - set(ref_oids)
             data = {oid: data[oid] for oid in non_ref}
-            if not data:
-                orb.log.info('  no data sent; returning empty.')
-                return result
-            orb.log.info('   data: {}'.format(str(data)))
             # oids of objects unknown to the server
             unknown_oids = list(set(data) - set(orb.get_oids()))
             for oid in unknown_oids:
                 del data[oid]
             dts_by_oid = {oid: uncook_datetime(dt_str)
                           for oid, dt_str in data.items()}
-            server_dts = {oid: uncook_datetime(dt_str) for oid, dt_str
-                          in orb.get_mod_dts(oids=list(data)).items()}
+            server_dts = {oid: dts for oid, dts
+                          in orb.get_mod_dts(oids=list(data),
+                                             datetimes=True).items()}
             # oids of newer objects on the server
             newer_oids = []
             for server_oid, server_dt in server_dts.items():
@@ -674,7 +676,7 @@ class RepositoryService(ApplicationSession):
             n_older = len(result[2])
             n_unknown = len(result[3])
             # orb.log.info('   result: {}'.format(str(result)))
-            orb.log.info('   result: of the oids sent to the server ...')
+            orb.log.info('   result: of the objects with oids in data ...')
             orb.log.info(f'   - {n_newer} have a newer copy on the server,')
             orb.log.info(f'   - {n_same} are the same as the server copies,')
             orb.log.info(f'   - {n_older} have an older copy on the server,')
@@ -717,7 +719,11 @@ class RepositoryService(ApplicationSession):
                           [b] created by the user but are in 'trash'.
             """
             orb.log.info('* [rpc] vger.sync_library_objects()')
-            orb.log.info('  data: {}'.format(str(data)))
+            if not data:
+                orb.log.info('  no data sent; returning empty result.')
+                return [[], []]
+            n = len(data)
+            orb.log.info(f'   received {n} items in data')
 
             # TODO: user object will be needed when more than "public" objects
             # are to be returned -- e.g., organizational product libraries to
@@ -747,8 +753,9 @@ class RepositoryService(ApplicationSession):
             # exclude reference data
             public_oids = list(set(all_public_oids) - set(ref_oids))
             if public_oids:
-                server_dts = {oid: uncook_datetime(dt_str) for oid, dt_str
-                              in orb.get_mod_dts(oids=public_oids).items()}
+                server_dts = {oid: dts for oid, dts
+                              in orb.get_mod_dts(oids=public_oids,
+                                                 datetimes=True).items()}
             # oids of newer objects on the server (or objects unknown to user)
             newer_oids = []
             if server_dts:
@@ -803,7 +810,9 @@ class RepositoryService(ApplicationSession):
             """
             orb.log.info('* [rpc] vger.sync_project() ...')
             orb.log.info('   project oid: {}'.format(str(project_oid)))
-            orb.log.info('   data: {}'.format(str(data)))
+            data = data or {}
+            n = len(data)
+            orb.log.info(f'   received {n} items in data')
             result = [[], [], [], []]
             if not project_oid or project_oid == 'pgefobjects:SANDBOX':
                 return result
@@ -838,12 +847,10 @@ class RepositoryService(ApplicationSession):
                     newer_sobjs = serialize(orb, newer_objs,
                                             include_components=True)
                     result = [newer_sobjs, same_oids, older_oids, unknown_oids]
-                    # orb.log.info('   result: {}'.format(str(result)))
                 else:
                     result = [[], same_oids, older_oids, unknown_oids]
-                    # orb.log.info('   result: {}'.format(str(result)))
             else:
-                orb.log.info('   ** project not found on server **')
+                orb.log.info('   ** project was not found on the server. **')
             n_newer = len(result[0])
             n_same = len(result[1])
             n_older = len(result[2])
@@ -1138,7 +1145,13 @@ class RepositoryService(ApplicationSession):
                     because it will often include related objects). If no
                     object is found, an empty list is returned.
             """
-            orb.log.info('* [rpc] vger.get_objects({}) ...'.format(oids))
+            if oids:
+                n = len(oids)
+                orb.log.info(f'* [rpc] vger.get_objects({n} oids) ...')
+            else:
+                orb.log.info('* [rpc] vger.get_objects() ...')
+                orb.log.info('        no oids in request, returning empty.')
+                return []
             # TODO: use get_perms() to determine authorization
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
