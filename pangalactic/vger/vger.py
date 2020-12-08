@@ -105,9 +105,8 @@ class RepositoryService(ApplicationSession):
                             objs = deserialize(orb, sobjs)
                             orb.log.info('    successfully deserialized.')
                             if objs:
-                                ids = [o.id for o in objs]
-                                orb.log.info('    loaded {} objs: {}'.format(
-                                             len(ids), str(ids)))
+                                n = len(objs)
+                                orb.log.info(f'    loaded {n} objs.')
                             else:
                                 msg = '0 new or modified objs in data.'
                                 orb.log.info('    {}'.format(msg))
@@ -670,7 +669,16 @@ class RepositoryService(ApplicationSession):
                 result = [newer_sobjs, same_oids, older_oids, unknown_oids]
             else:
                 result = [[], same_oids, older_oids, unknown_oids]
-            orb.log.info('   result: {}'.format(str(result)))
+            n_newer = len(result[0])
+            n_same = len(result[1])
+            n_older = len(result[2])
+            n_unknown = len(result[3])
+            # orb.log.info('   result: {}'.format(str(result)))
+            orb.log.info('   result: of the oids sent to the server ...')
+            orb.log.info(f'   - {n_newer} have a newer copy on the server,')
+            orb.log.info(f'   - {n_same} are the same as the server copies,')
+            orb.log.info(f'   - {n_older} have an older copy on the server,')
+            orb.log.info(f'   - {n_unknown} are unknown to the server.')
             return result
 
         yield self.register(sync_objects, 'vger.sync_objects',
@@ -761,10 +769,15 @@ class RepositoryService(ApplicationSession):
                 sorted_newer_oids = sorted(newer_oc, key=lambda x:
                                            all_ord.index(newer_oc.get(x)))
                 result = [sorted_newer_oids, unknown_oids]
-                orb.log.info('   result: {}'.format(str(result)))
+                # orb.log.info('   result: {}'.format(str(result)))
             else:
-                result = [{}, unknown_oids]
-                orb.log.info('   result: {}'.format(str(result)))
+                result = [[], unknown_oids]
+                # orb.log.info('   result: {}'.format(str(result)))
+            n_newer = len(result[0])
+            n_unknown = len(result[1])
+            orb.log.info('   result: of the oids sent to the server ...')
+            orb.log.info(f'   - {n_newer} have a newer copy on the server,')
+            orb.log.info(f'   - {n_unknown} are unknown to the server.')
             return result
 
         yield self.register(sync_library_objects, 'vger.sync_library_objects',
@@ -825,12 +838,22 @@ class RepositoryService(ApplicationSession):
                     newer_sobjs = serialize(orb, newer_objs,
                                             include_components=True)
                     result = [newer_sobjs, same_oids, older_oids, unknown_oids]
-                    orb.log.info('   result: {}'.format(str(result)))
+                    # orb.log.info('   result: {}'.format(str(result)))
                 else:
                     result = [[], same_oids, older_oids, unknown_oids]
-                    orb.log.info('   result: {}'.format(str(result)))
+                    # orb.log.info('   result: {}'.format(str(result)))
             else:
                 orb.log.info('   ** project not found on server **')
+            n_newer = len(result[0])
+            n_same = len(result[1])
+            n_older = len(result[2])
+            n_unknown = len(result[3])
+            # orb.log.info('   result: {}'.format(str(result)))
+            orb.log.info('   result: of the oids/dts sent to the server ...')
+            orb.log.info(f'   - {n_newer} have a newer copy on the server,')
+            orb.log.info(f'   - {n_same} are the same as the server copies,')
+            orb.log.info(f'   - {n_older} have an older copy on the server,')
+            orb.log.info(f'   - {n_unknown} are unknown to the server.')
             return result
 
         yield self.register(sync_project, 'vger.sync_project',
@@ -1366,9 +1389,19 @@ class RepositoryService(ApplicationSession):
                     saved_objs.append(person)
                 else:
                     # create person
+                    # NOTE: if 'name' is not provided but 'first_name' etc.
+                    # are, generate a 'name'
+                    name = data.get('name')
+                    if not name:
+                        name = ''
+                        name_tuple = [data.get(n, '')
+                                      for n in ['first_name', 'mi_or_name',
+                                      'last_name'] if data.get(n)]
+                        if name_tuple:
+                            data['name'] = ' '.join(name_tuple)
                     Person = orb.classes['Person']
-                    person = Person(creator=admin, modifier=admin,
-                                    create_datetime=dts, mod_datetime=dts, **data)
+                    person = Person(create_datetime=dts, mod_datetime=dts,
+                                    **data)
                     orb.save([person], recompute=False)
                     saved_objs.append(person)
                 if public_key:
@@ -1395,7 +1428,7 @@ class RepositoryService(ApplicationSession):
                             pk_added = False
                     else:
                         orb.log.info(f'  - path "{auth_db_path}" not found --')
-                        orb.log.info(f'    could not add public key.')
+                        orb.log.info('    could not add public key.')
                         pk_added = False
                 ser_objs = serialize(orb, saved_objs)
                 orb.log.info('    new person oid: {}'.format(person.oid))
