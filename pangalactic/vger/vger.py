@@ -719,10 +719,7 @@ class RepositoryService(ApplicationSession):
                           [b] created by the user but are in 'trash'.
             """
             orb.log.info('* [rpc] vger.sync_library_objects()')
-            if not data:
-                orb.log.info('  no data sent; returning empty result.')
-                return [[], []]
-            n = len(data)
+            n = len(data or {})
             orb.log.info(f'   received {n} items in data')
 
             # TODO: user object will be needed when more than "public" objects
