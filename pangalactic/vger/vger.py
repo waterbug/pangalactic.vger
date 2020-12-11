@@ -21,8 +21,9 @@ from autobahn.wamp         import cryptosign
 from autobahn.wamp.types   import RegisterOptions
 
 from pangalactic.core                  import __version__
-from pangalactic.core                  import (config, state, read_config,
-                                               write_config, write_state)
+from pangalactic.core                  import (config, state, trash,
+                                               read_config, write_config,
+                                               write_state, write_trash)
 from pangalactic.core.access           import get_perms, is_cloaked
 from pangalactic.core.entity           import Entity
 from pangalactic.core.mapping          import schema_maps
@@ -565,8 +566,8 @@ class RepositoryService(ApplicationSession):
             # deletions are authorized only for objs created by this user,
             # except in the case of RoleAssignments ...
             # NOTE: *Except* for RoleAssignments, objects without a 'creator'
-            # attribute cannot be deleted -> only instances of subclasses of
-            # 'Modelable' can be deleted.
+            # attribute only be deleted by a Global Admin -> only instances of
+            # subclasses of 'Modelable' can be deleted by ordinary users.
             admin_role = orb.get('pgefobjects:Role.Administrator')
             global_admin = bool(orb.select('RoleAssignment', assigned_to=user,
                                 assigned_role=admin_role,
@@ -595,6 +596,11 @@ class RepositoryService(ApplicationSession):
                         auth_dels[obj.oid] = obj
                     elif 'delete' in get_perms(obj, user=user):
                         auth_dels[obj.oid] = obj
+            # add serialized objects to trash
+            if auth_dels:
+                for oid, obj in auth_dels.items:
+                    trash[oid] = serialize(orb, [obj])
+                write_trash(os.path.join(orb.home, 'trash'))
             oids_deleted = list(auth_dels.keys())
             orb.delete(auth_dels.values())
             for oid in oids_deleted:
@@ -610,7 +616,9 @@ class RepositoryService(ApplicationSession):
             """
             Sync the objects referenced by the data.  NOTE:  oids in the data
             that are unknown to the server will be returned in the 4th element
-            of the result (i.e., [3] in the result specification below).
+            of the result (i.e., [3] in the result specification below).  Any
+            oids in the data that are found in trash will trigger a "deleted"
+            message to be published.
 
             NOTE: the main use case for `sync_objects()` is as the first step
             in syncing a user's created objects between their client's local
@@ -638,6 +646,13 @@ class RepositoryService(ApplicationSession):
                 return result
             n = len(data)
             orb.log.info(f'  received {n} items in data')
+            # if any oids appear in trash, publish a "deleted" message
+            for oid in data:
+                if oid in trash:
+                    del data[oid]
+                    orb.log.info(f'  publish "deleted" msg for oid "{oid}".')
+                    channel = 'vger.channel.public'
+                    self.publish(channel, {'deleted': oid})
             # remove any refdata
             non_ref = set(data.keys()) - set(ref_oids)
             data = {oid: data[oid] for oid in non_ref}
@@ -719,8 +734,9 @@ class RepositoryService(ApplicationSession):
                           [b] created by the user but are in 'trash'.
             """
             orb.log.info('* [rpc] vger.sync_library_objects()')
-            n = len(data or {})
-            orb.log.info(f'   received {n} items in data')
+            data = data or {}
+            n = len(data)
+            orb.log.info(f'  received {n} item(s) in data')
 
             # TODO: user object will be needed when more than "public" objects
             # are to be returned -- e.g., organizational product libraries to
@@ -731,6 +747,13 @@ class RepositoryService(ApplicationSession):
                 # user = orb.select('Person', id=userid)
             result = [[], []]
 
+            # if any oids appear in trash, publish a "deleted" message
+            for oid in data:
+                if oid in trash:
+                    del data[oid]
+                    orb.log.info(f'  publish "deleted" msg for oid "{oid}".')
+                    channel = 'vger.channel.public'
+                    self.publish(channel, {'deleted': oid})
             # oids of objects unknown to the server (these would be objects
             # in data that were deleted on the server) -- the user should
             # delete these from their local db (NOTE that this is the REVERSE
@@ -779,9 +802,9 @@ class RepositoryService(ApplicationSession):
                 # orb.log.info('   result: {}'.format(str(result)))
             n_newer = len(result[0])
             n_unknown = len(result[1])
-            orb.log.info('   result: of the oids sent to the server ...')
-            orb.log.info(f'   - {n_newer} have a newer copy on the server,')
-            orb.log.info(f'   - {n_unknown} are unknown to the server.')
+            orb.log.info('  result: of the oids sent to the server ...')
+            orb.log.info(f'  - {n_newer} have a newer copy on the server,')
+            orb.log.info(f'  - {n_unknown} are unknown to the server.')
             return result
 
         yield self.register(sync_library_objects, 'vger.sync_library_objects',
@@ -810,6 +833,13 @@ class RepositoryService(ApplicationSession):
             data = data or {}
             n = len(data)
             orb.log.info(f'   received {n} items in data')
+            # if any oids appear in trash, publish a "deleted" message
+            for oid in data:
+                if oid in trash:
+                    del data[oid]
+                    orb.log.info(f'  publish "deleted" msg for oid "{oid}".')
+                    channel = 'vger.channel.public'
+                    self.publish(channel, {'deleted': oid})
             result = [[], [], [], []]
             if not project_oid or project_oid == 'pgefobjects:SANDBOX':
                 return result
