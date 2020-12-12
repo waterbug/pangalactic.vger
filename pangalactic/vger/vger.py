@@ -598,7 +598,7 @@ class RepositoryService(ApplicationSession):
                         auth_dels[obj.oid] = obj
             # add serialized objects to trash
             if auth_dels:
-                for oid, obj in auth_dels.items:
+                for oid, obj in auth_dels.items():
                     trash[oid] = serialize(orb, [obj])
                 write_trash(os.path.join(orb.home, 'trash'))
             oids_deleted = list(auth_dels.keys())
@@ -650,7 +650,8 @@ class RepositoryService(ApplicationSession):
             for oid in data:
                 if oid in trash:
                     del data[oid]
-                    orb.log.info(f'  publish "deleted" msg for oid "{oid}".')
+                    orb.log.info(f'  found in trash: oid "{oid}"')
+                    orb.log.info('  publishing "deleted" message ...')
                     channel = 'vger.channel.public'
                     self.publish(channel, {'deleted': oid})
             # remove any refdata
@@ -751,7 +752,8 @@ class RepositoryService(ApplicationSession):
             for oid in data:
                 if oid in trash:
                     del data[oid]
-                    orb.log.info(f'  publish "deleted" msg for oid "{oid}".')
+                    orb.log.info(f'  found in trash: oid "{oid}"')
+                    orb.log.info('  publishing "deleted" message ...')
                     channel = 'vger.channel.public'
                     self.publish(channel, {'deleted': oid})
             # oids of objects unknown to the server (these would be objects
@@ -837,7 +839,8 @@ class RepositoryService(ApplicationSession):
             for oid in data:
                 if oid in trash:
                     del data[oid]
-                    orb.log.info(f'  publish "deleted" msg for oid "{oid}".')
+                    orb.log.info(f'  found in trash: oid "{oid}"')
+                    orb.log.info('  publishing "deleted" message ...')
                     channel = 'vger.channel.public'
                     self.publish(channel, {'deleted': oid})
             result = [[], [], [], []]
