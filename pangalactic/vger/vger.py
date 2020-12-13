@@ -21,9 +21,9 @@ from autobahn.wamp         import cryptosign
 from autobahn.wamp.types   import RegisterOptions
 
 from pangalactic.core                  import __version__
-from pangalactic.core                  import (config, state, trash,
+from pangalactic.core                  import (config, deleted, state,
                                                read_config, write_config,
-                                               write_state, write_trash)
+                                               write_deleted, write_state)
 from pangalactic.core.access           import get_perms, is_cloaked
 from pangalactic.core.entity           import Entity
 from pangalactic.core.mapping          import schema_maps
@@ -596,11 +596,11 @@ class RepositoryService(ApplicationSession):
                         auth_dels[obj.oid] = obj
                     elif 'delete' in get_perms(obj, user=user):
                         auth_dels[obj.oid] = obj
-            # add serialized objects to trash
+            # add oids of objects to be deleted to the 'deleted' cache
             if auth_dels:
                 for oid, obj in auth_dels.items():
-                    trash[oid] = serialize(orb, [obj])
-                write_trash(os.path.join(orb.home, 'trash'))
+                    deleted[oid] = obj.id
+                write_deleted(os.path.join(orb.home, 'deleted'))
             oids_deleted = list(auth_dels.keys())
             orb.delete(auth_dels.values())
             for oid in oids_deleted:
@@ -617,8 +617,8 @@ class RepositoryService(ApplicationSession):
             Sync the objects referenced by the data.  NOTE:  oids in the data
             that are unknown to the server will be returned in the 4th element
             of the result (i.e., [3] in the result specification below).  Any
-            oids in the data that are found in trash will trigger a "deleted"
-            message to be published.
+            oids in the 'deleted' cache will trigger a "deleted" message to be
+            published.
 
             NOTE: the main use case for `sync_objects()` is as the first step
             in syncing a user's created objects between their client's local
@@ -646,11 +646,11 @@ class RepositoryService(ApplicationSession):
                 return result
             n = len(data)
             orb.log.info(f'  received {n} items in data')
-            # if any oids appear in trash, publish a "deleted" message
+            # if any oids appear in 'deleted' cache, publish a "deleted" msg
             for oid in data:
-                if oid in trash:
+                if oid in deleted:
                     del data[oid]
-                    orb.log.info(f'  found in trash: oid "{oid}"')
+                    orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
                     orb.log.info('  publishing "deleted" message ...')
                     channel = 'vger.channel.public'
                     self.publish(channel, {'deleted': oid})
@@ -732,7 +732,7 @@ class RepositoryService(ApplicationSession):
                           the user should delete these from their local db if
                           they are either
                           [a] not created by the user or
-                          [b] created by the user but are in 'trash'.
+                          [b] created by the user but are in 'deleted' cache.
             """
             orb.log.info('* [rpc] vger.sync_library_objects()')
             data = data or {}
@@ -748,11 +748,11 @@ class RepositoryService(ApplicationSession):
                 # user = orb.select('Person', id=userid)
             result = [[], []]
 
-            # if any oids appear in trash, publish a "deleted" message
+            # if any oids appear in "deleted" cache, publish a "deleted" msg
             for oid in data:
-                if oid in trash:
+                if oid in deleted:
                     del data[oid]
-                    orb.log.info(f'  found in trash: oid "{oid}"')
+                    orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
                     orb.log.info('  publishing "deleted" message ...')
                     channel = 'vger.channel.public'
                     self.publish(channel, {'deleted': oid})
@@ -835,11 +835,11 @@ class RepositoryService(ApplicationSession):
             data = data or {}
             n = len(data)
             orb.log.info(f'   received {n} items in data')
-            # if any oids appear in trash, publish a "deleted" message
+            # if any oids appear in "deleted" cache, publish a "deleted" msg
             for oid in data:
-                if oid in trash:
+                if oid in deleted:
                     del data[oid]
-                    orb.log.info(f'  found in trash: oid "{oid}"')
+                    orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
                     orb.log.info('  publishing "deleted" message ...')
                     channel = 'vger.channel.public'
                     self.publish(channel, {'deleted': oid})
