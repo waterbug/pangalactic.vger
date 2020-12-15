@@ -602,7 +602,8 @@ class RepositoryService(ApplicationSession):
                     deleted[oid] = obj.id
                 write_deleted(os.path.join(orb.home, 'deleted'))
             oids_deleted = list(auth_dels.keys())
-            orb.delete(auth_dels.values())
+            objs_to_delete = list(auth_dels.values())
+            orb.delete(objs_to_delete)
             for oid in oids_deleted:
                 orb.log.info('   publishing "deleted" msg to public channel.')
                 channel = 'vger.channel.public'
