@@ -30,9 +30,6 @@ ENV PATH="/home/crossbar/miniconda/bin:$PATH"
 # expose the postgresql port
 EXPOSE 65432
 RUN conda update conda \
- # create and activate a python 3.7 env
- && conda create -n pgef python=3.7 \
- && conda activate pgef \
  # force installs of python-ldap and psycopg2
  && conda install -c conda-forge python-ldap \
  && conda install -c conda-forge psycopg2 \
