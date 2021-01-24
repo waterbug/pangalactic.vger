@@ -813,6 +813,118 @@ class RepositoryService(ApplicationSession):
         yield self.register(sync_library_objects, 'vger.sync_library_objects',
                             RegisterOptions(details_arg='cb_details'))
 
+        def force_sync_library_objects(data, cb_details=None):
+            """
+            Get all instances of ManagedObject* to which the user has access,
+            regardless of their last modified datetime stamp.
+
+            NOTE:  the use of the keyword arg 'public' in orb.search_exact()
+            implies that only instances of ManagedObject and its subclasses
+            (Product, Template, etc.) will be returned.  Note also that this
+            means PortTypes and PortTemplates libraries will not be synced,
+            since they are not ManagedObjects, but they are also "reference
+            data", so they should not be synced anyway.
+
+            Args:
+                data (dict):  dict {oid: str(mod_datetime)}
+                    containing the library objects that the user has (all
+                    objects the user has that were not created by the user)
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Return:
+                result (list of lists):  list containing:
+                    [0]:  any oids that have later mod_datetime(s) or were not
+                          found in data, sorted in DESERIALIZATION_ORDER (the
+                          client will do get_objects() calls to get these
+                          objects)
+                    [1]:  any oids in data that were not found on the server --
+                          the client app should delete these from the local db
+                          if they are either
+                          [a] not created by the user or
+                          [b] created by the user but are in 'deleted' cache.
+            """
+            orb.log.info('* [rpc] vger.force_sync_library_objects()')
+            data = data or {}
+            n = len(data)
+            orb.log.info(f'  received {n} item(s) in data')
+
+            # TODO: user object will be needed when more than "public" objects
+            # are to be returned -- e.g., organizational product libraries to
+            # which the user has access by having a role in the organization
+            # user = None
+            # userid = getattr(cb_details, 'caller_authid', '')
+            # if userid:
+                # user = orb.select('Person', id=userid)
+            result = [[], []]
+
+            # if any oids appear in "deleted" cache, publish a "deleted" msg
+            for oid in data:
+                if oid in deleted:
+                    del data[oid]
+                    orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
+                    orb.log.info('  publishing "deleted" message ...')
+                    channel = 'vger.channel.public'
+                    self.publish(channel, {'deleted': oid})
+            # oids of objects unknown to the server (these would be objects
+            # in data that were deleted on the server) -- the user app should
+            # delete these from their local db (NOTE that this is the REVERSE
+            # of the action taken by `sync_objects()`, which assumes they are
+            # to be deleted on the server!!).
+            unknown_oids = list(set(data) - set(orb.get_oids()))
+            for oid in unknown_oids:
+                del data[oid]
+            # submitted data:  mod_datetimes by oid
+            # NOTE: for "force_sync_library_objects", mod_datetimes are ignored
+            dts_by_oid = {oid: uncook_datetime(dt_str)
+                          for oid, dt_str in data.items()}
+            # get mod_dts of all objects on the server to which the user should
+            # have access ...
+            # initially, just public objects (`ManagedObject` subtypes)
+            server_dts = {}
+            all_public_oids = [o.oid for o in orb.search_exact(public=True)]
+            # exclude reference data
+            public_oids = list(set(all_public_oids) - set(ref_oids))
+            # NOTE: for "force_sync_library_objects", mod_datetimes are ignored
+            # if public_oids:
+                # server_dts = {oid: dts for oid, dts
+                              # in orb.get_mod_dts(oids=public_oids,
+                                                 # datetimes=True).items()}
+            # oids of newer objects on the server (or objects unknown to user)
+            # NOTE: for "force_sync_library_objects", ALL public server objs
+            # will be included, regardless of mod_datetimes
+            # newer_oids = []
+            # if server_dts:
+                # for server_oid, server_dt in server_dts.items():
+                    # client_dt = dts_by_oid.get(server_oid)
+                    # if earlier(client_dt, server_dt):
+                        # newer_oids.append(server_oid)
+                # for oid in newer_oids:
+                    # if dts_by_oid.get(oid):
+                        # del dts_by_oid[oid]
+            # if newer_oids:
+            if public_oids:
+                server_oc = orb.get_oid_cnames(oids=public_oids)
+                all_ord = (DESERIALIZATION_ORDER +
+                             list(set(server_oc.values()) -
+                                  set(DESERIALIZATION_ORDER)))
+                sorted_server_oids = sorted(server_oc, key=lambda x:
+                                            all_ord.index(server_oc.get(x)))
+                result = [sorted_server_oids, unknown_oids]
+                # orb.log.info('   result: {}'.format(str(result)))
+            else:
+                result = [[], unknown_oids]
+                # orb.log.info('   result: {}'.format(str(result)))
+            n_server = len(result[0])
+            n_unknown = len(result[1])
+            orb.log.info('  result: of the oids sent to the server ...')
+            orb.log.info(f'  - {n_server} have a copy on the server,')
+            orb.log.info(f'  - {n_unknown} are unknown to the server.')
+            return result
+
+        yield self.register(force_sync_library_objects,
+                            'vger.force_sync_library_objects',
+                            RegisterOptions(details_arg='cb_details'))
+
         def sync_project(project_oid, data, cb_details=None):
             """
             Sync all objects for the specified project in the repository.
