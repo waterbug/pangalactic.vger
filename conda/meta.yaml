@@ -1,6 +1,6 @@
 package:
   name: pangalactic.vger
-  version: "1.5.dev2"
+  version: "1.5"
 
 source:
         path: /home/waterbug/gitlab/pangalactic.vger
@@ -11,7 +11,7 @@ requirements:
     - setuptools
 
   run:
-    - pangalactic.core=1.5.dev2
+    - pangalactic.core=1.5
     - autobahn
     - pyopenssl
     - python >=2.7
