@@ -64,12 +64,16 @@ def _get_dir_info(res):
     initials_list = rawdict.get('initials', [b''])
     mail_list = rawdict.get('nasaPrimaryEmail', [b''])
     # code may or may not have a dot -- return "dotless" format for both cases:
-    org_code_str = rawdict['nasaorgCode'][0].decode()
-    nodotcode = ''.join(org_code_str.split('.'))
-    if len(nodotcode) == 4:
-        org_code = '.'.join([nodotcode[0:3], nodotcode[3]])
+    org_code_list = rawdict.get('nasaorgCode', [b''])
+    if org_code_list:
+        org_code_str = org_code_list[0].decode()
+        nodotcode = ''.join(org_code_str.split('.'))
+        if len(nodotcode) == 4:
+            org_code = '.'.join([nodotcode[0:3], nodotcode[3]])
+        else:
+            org_code = rawdict['nasaorgCode'][0].decode()
     else:
-        org_code = rawdict['nasaorgCode'][0].decode()
+        org_code = ''
     # decode each field value so dir_info values are strings ...
     dir_info = dict(id=rawdict['agencyUID'][0].decode(),
                     oid=uupic_list[0].decode(),
