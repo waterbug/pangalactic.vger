@@ -648,8 +648,8 @@ class RepositoryService(ApplicationSession):
             n = len(data)
             orb.log.info(f'  received {n} items in data')
             # if any oids appear in 'deleted' cache, publish a "deleted" msg
-            for oid in data:
-                if oid in deleted:
+            for oid in deleted:
+                if oid in data:
                     del data[oid]
                     orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
                     orb.log.info('  publishing "deleted" message ...')
@@ -750,8 +750,8 @@ class RepositoryService(ApplicationSession):
             result = [[], []]
 
             # if any oids appear in "deleted" cache, publish a "deleted" msg
-            for oid in data:
-                if oid in deleted:
+            for oid in deleted:
+                if oid in data:
                     del data[oid]
                     orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
                     orb.log.info('  publishing "deleted" message ...')
@@ -858,8 +858,8 @@ class RepositoryService(ApplicationSession):
             result = [[], []]
 
             # if any oids appear in "deleted" cache, publish a "deleted" msg
-            for oid in data:
-                if oid in deleted:
+            for oid in deleted:
+                if oid in data:
                     del data[oid]
                     orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
                     orb.log.info('  publishing "deleted" message ...')
@@ -875,12 +875,12 @@ class RepositoryService(ApplicationSession):
                 del data[oid]
             # submitted data:  mod_datetimes by oid
             # NOTE: for "force_sync_library_objects", mod_datetimes are ignored
-            dts_by_oid = {oid: uncook_datetime(dt_str)
-                          for oid, dt_str in data.items()}
+            # dts_by_oid = {oid: uncook_datetime(dt_str)
+                          # for oid, dt_str in data.items()}
             # get mod_dts of all objects on the server to which the user should
             # have access ...
             # initially, just public objects (`ManagedObject` subtypes)
-            server_dts = {}
+            # server_dts = {}
             all_public_oids = [o.oid for o in orb.search_exact(public=True)]
             # exclude reference data
             public_oids = list(set(all_public_oids) - set(ref_oids))
@@ -949,8 +949,8 @@ class RepositoryService(ApplicationSession):
             n = len(data)
             orb.log.info(f'   received {n} items in data')
             # if any oids appear in "deleted" cache, publish a "deleted" msg
-            for oid in data:
-                if oid in deleted:
+            for oid in deleted:
+                if oid in data:
                     del data[oid]
                     orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
                     orb.log.info('  publishing "deleted" message ...')
@@ -966,9 +966,6 @@ class RepositoryService(ApplicationSession):
                 unknown_oids = []
                 server_objs = orb.get_objects_for_project(project)
                 if data:
-                    # for oid in data:
-                        # if not orb.get(oid):
-                            # unknown_oids.append(oid)
                     unknown_oids = list(set(data) - set(orb.get_oids()))
                     for oid in unknown_oids:
                         del data[oid]
