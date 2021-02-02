@@ -429,6 +429,23 @@ class RepositoryService(ApplicationSession):
                 return dict(new_obj_dts={}, mod_obj_dts={}, unauth=unauth_ids,
                             no_owners=no_owners)
             output = deserialize(orb, authorized.values(), dictify=True)
+            # ================================================================
+            # special case for PSUs in the "SANDBOX" project: DO NOT send
+            # messages to other users regarding ProjectSystemUsages for which
+            # the "project" is the SANDBOX project (oid: "pgefobjects:SANDBOX")
+            # ...  those object have been saved by the deserialize() above, but
+            # should be removed from the output ...
+            # ================================================================
+            sb_oid = "pgefobjects:SANDBOX"
+            for label in ['new', 'modified', 'unmodified', 'error']:
+                if output.get(label):
+                    psus = [o for o in output[label]
+                        if isinstance(o, orb.classes['ProjectSystemUsage'])]
+                    if psus:
+                        for psu in psus:
+                            if getattr(psu.system, 'oid', '') == sb_oid:
+                                output[label].remove(psu)
+            # ================================================================
             mod_obj_dts = {}
             new_obj_dts = {}
             # the "new_objs" and "mod_obj" dicts need to group object dicts by
