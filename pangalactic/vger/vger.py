@@ -657,6 +657,7 @@ class RepositoryService(ApplicationSession):
                     [1]:  oids of server objects with same mod_datetime(s)
                     [2]:  oids of server objects with earlier mod_datetime(s)
                     [3]:  any oids in data that were not found on the server
+                    [4]:  all oids in the "deleted" cache
             """
             orb.log.info('* [rpc] vger.sync_objects(data)')
             result = [[], [], [], []]
@@ -700,22 +701,28 @@ class RepositoryService(ApplicationSession):
             # oids of older objects on the server
             older_oids = [oid for oid, dt in dts_by_oid.items()
                           if server_dts.get(oid) and dt > server_dts.get(oid)]
+            deleted_oids = list(deleted)
             if newer_oids:
                 newer_sobjs = serialize(orb, orb.get(oids=newer_oids),
                                         include_components=True)
-                result = [newer_sobjs, same_oids, older_oids, unknown_oids]
+                result = [newer_sobjs, same_oids, older_oids, unknown_oids,
+                          deleted_oids]
             else:
-                result = [[], same_oids, older_oids, unknown_oids]
+                result = [[], same_oids, older_oids, unknown_oids,
+                          deleted_oids]
             n_newer = len(result[0])
             n_same = len(result[1])
             n_older = len(result[2])
             n_unknown = len(result[3])
+            n_deleted = len(result[4])
             # orb.log.info('   result: {}'.format(str(result)))
             orb.log.info('   result: of the objects with oids in data ...')
             orb.log.info(f'   - {n_newer} have a newer copy on the server,')
             orb.log.info(f'   - {n_same} are the same as the server copies,')
             orb.log.info(f'   - {n_older} have an older copy on the server,')
             orb.log.info(f'   - {n_unknown} are unknown to the server.')
+            orb.log.info('     ... also included are:')
+            orb.log.info(f'   - {n_deleted} oids from the "deleted" cache')
             return result
 
         yield self.register(sync_objects, 'vger.sync_objects',
@@ -960,6 +967,7 @@ class RepositoryService(ApplicationSession):
                     [1]:  oids of server objects with same mod_datetime(s)
                     [2]:  oids of server objects with earlier mod_datetime(s)
                     [3]:  any oids in data that were not found on the server
+                    [4]:  all oids in the "deleted" cache
             """
             orb.log.info('* [rpc] vger.sync_project() ...')
             orb.log.info('   project oid: {}'.format(str(project_oid)))
@@ -1001,24 +1009,30 @@ class RepositoryService(ApplicationSession):
                                       - set([o.oid for o in newer_objs]))
                 else:
                     newer_objs = server_objs
+                deleted_oids = list(deleted)
                 if newer_objs:
                     newer_sobjs = serialize(orb, newer_objs,
                                             include_components=True)
-                    result = [newer_sobjs, same_oids, older_oids, unknown_oids]
+                    result = [newer_sobjs, same_oids, older_oids, unknown_oids,
+                              deleted_oids]
                 else:
-                    result = [[], same_oids, older_oids, unknown_oids]
+                    result = [[], same_oids, older_oids, unknown_oids,
+                              deleted_oids]
             else:
                 orb.log.info('   ** project was not found on the server. **')
             n_newer = len(result[0])
             n_same = len(result[1])
             n_older = len(result[2])
             n_unknown = len(result[3])
+            n_deleted = len(result[4])
             # orb.log.info('   result: {}'.format(str(result)))
             orb.log.info('   result: of the oids/dts sent to the server ...')
             orb.log.info(f'   - {n_newer} have a newer copy on the server,')
             orb.log.info(f'   - {n_same} are the same as the server copies,')
             orb.log.info(f'   - {n_older} have an older copy on the server,')
             orb.log.info(f'   - {n_unknown} are unknown to the server.')
+            orb.log.info('     ... also included are:')
+            orb.log.info(f'   - {n_deleted} oids from the "deleted" cache')
             return result
 
         yield self.register(sync_project, 'vger.sync_project',
