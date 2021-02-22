@@ -71,7 +71,7 @@ def _get_dir_info(res):
         if len(nodotcode) == 4:
             org_code = '.'.join([nodotcode[0:3], nodotcode[3]])
         else:
-            org_code = rawdict['nasaorgCode'][0].decode()
+            org_code = rawdict.get('nasaorgCode', [b''])[0].decode()
     else:
         org_code = ''
     # decode each field value so dir_info values are strings ...
