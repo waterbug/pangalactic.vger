@@ -417,9 +417,13 @@ class RepositoryService(ApplicationSession):
                           if so.get('creator') == user_oid}
             # existing objects for which the user has 'modify' permission
             for oid, so in sobjs_unique.items():
-                if 'modify' in get_perms(orb.get(so.get('oid')),
-                                         user=user_obj):
-                    authorized[oid] = so 
+                obj_in_repo = orb.get(so.get('oid'))
+                perms = get_perms(obj_in_repo, user=user_obj)
+                if 'modify' in perms:
+                    # orb.log.info('  auth (perms: {})'.format(str(perms)))
+                    authorized[oid] = so
+                # else:
+                    # orb.log.info('  unauth (perms: {})'.format(str(perms)))
             unauthorized = {oid:so for oid, so in sobjs_unique.items()
                             if oid not in authorized}
             unauth_ids = [unauthorized[oid].get('id', 'no id')
