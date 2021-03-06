@@ -27,7 +27,7 @@ from pangalactic.core                  import (config, deleted, state,
 from pangalactic.core.access           import get_perms, is_cloaked
 from pangalactic.core.entity           import Entity
 from pangalactic.core.mapping          import schema_maps
-from pangalactic.core.parametrics      import set_dval, set_pval
+from pangalactic.core.parametrics      import parameterz, set_dval, set_pval
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
                                                deserialize, serialize)
 from pangalactic.core.refdata          import ref_oids
@@ -734,7 +734,7 @@ class RepositoryService(ApplicationSession):
 
         def sync_library_objects(data, cb_details=None):
             """
-            Sync all instances of ManagedObject* to which the user has access.
+            Sync all "public" instances of ManagedObject*.
             (NOTE: `sync_objects()` should be called first with the user's
             local objects, so that any objects the user created since their
             last login will be added to the server.)
@@ -763,6 +763,8 @@ class RepositoryService(ApplicationSession):
                           they are either
                           [a] not created by the user or
                           [b] created by the user but are in 'deleted' cache.
+                    [2]:  parameter data for all oids in data known to the
+                          server
             """
             orb.log.info('* [rpc] vger.sync_library_objects()')
             data = data or {}
@@ -776,7 +778,7 @@ class RepositoryService(ApplicationSession):
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
                 # user = orb.select('Person', id=userid)
-            result = [[], []]
+            result = [[], [], []]
 
             # if any oids appear in "deleted" cache, publish a "deleted" msg
             for oid in deleted:
@@ -808,6 +810,7 @@ class RepositoryService(ApplicationSession):
                 server_dts = {oid: dts for oid, dts
                               in orb.get_mod_dts(oids=public_oids,
                                                  datetimes=True).items()}
+            parm_data = {oid: parameterz.get(oid) for oid in public_oids}
             # oids of newer objects on the server (or objects unknown to user)
             newer_oids = []
             if server_dts:
@@ -827,16 +830,18 @@ class RepositoryService(ApplicationSession):
                                   set(DESERIALIZATION_ORDER)))
                 sorted_newer_oids = sorted(newer_oc, key=lambda x:
                                            all_ord.index(newer_oc.get(x)))
-                result = [sorted_newer_oids, unknown_oids]
+                result = [sorted_newer_oids, unknown_oids, parm_data]
                 # orb.log.info('   result: {}'.format(str(result)))
             else:
-                result = [[], unknown_oids]
+                result = [[], unknown_oids, parm_data]
                 # orb.log.info('   result: {}'.format(str(result)))
             n_newer = len(result[0])
             n_unknown = len(result[1])
+            n_obj_parms = len(result[2])
             orb.log.info('  result: of the oids sent to the server ...')
             orb.log.info(f'  - {n_newer} have a newer copy on the server,')
             orb.log.info(f'  - {n_unknown} are unknown to the server.')
+            orb.log.info(f'  - parms retrieved for {n_obj_parms} objects.')
             return result
 
         yield self.register(sync_library_objects, 'vger.sync_library_objects',
@@ -844,8 +849,8 @@ class RepositoryService(ApplicationSession):
 
         def force_sync_library_objects(data, cb_details=None):
             """
-            Get all instances of ManagedObject* to which the user has access,
-            regardless of their last modified datetime stamp.
+            Get all "public" instances of ManagedObject on the server,
+            regardless of their mod_datetimes.
 
             NOTE:  the use of the keyword arg 'public' in orb.search_exact()
             implies that only instances of ManagedObject and its subclasses
@@ -855,17 +860,13 @@ class RepositoryService(ApplicationSession):
             data", so they should not be synced anyway.
 
             Args:
-                data (dict):  dict {oid: str(mod_datetime)}
-                    containing the library objects that the user has (all
-                    objects the user has that were not created by the user)
+                data (dict):  dict {oid: str(mod_datetime)} for a set of
+                    objects
                 cb_details:  added by crossbar; not included in rpc signature
 
             Return:
                 result (list of lists):  list containing:
-                    [0]:  any oids that have later mod_datetime(s) or were not
-                          found in data, sorted in DESERIALIZATION_ORDER (the
-                          client will do get_objects() calls to get these
-                          objects)
+                    [0]:  oids of all "public" ManagedObject instances
                     [1]:  any oids in data that were not found on the server --
                           the client app should delete these from the local db
                           if they are either
@@ -876,7 +877,6 @@ class RepositoryService(ApplicationSession):
             data = data or {}
             n = len(data)
             orb.log.info(f'  received {n} item(s) in data')
-
             # TODO: user object will be needed when more than "public" objects
             # are to be returned -- e.g., organizational product libraries to
             # which the user has access by having a role in the organization
@@ -885,7 +885,6 @@ class RepositoryService(ApplicationSession):
             # if userid:
                 # user = orb.select('Person', id=userid)
             result = [[], []]
-
             # if any oids appear in "deleted" cache, publish a "deleted" msg
             for oid in deleted:
                 if oid in data:
@@ -902,35 +901,11 @@ class RepositoryService(ApplicationSession):
             unknown_oids = list(set(data) - set(orb.get_oids()))
             for oid in unknown_oids:
                 del data[oid]
-            # submitted data:  mod_datetimes by oid
-            # NOTE: for "force_sync_library_objects", mod_datetimes are ignored
-            # dts_by_oid = {oid: uncook_datetime(dt_str)
-                          # for oid, dt_str in data.items()}
-            # get mod_dts of all objects on the server to which the user should
-            # have access ...
-            # initially, just public objects (`ManagedObject` subtypes)
-            # server_dts = {}
+            # NOTE: for "force_sync_library_objects", ALL public server objs
+            # will be included, regardless of mod_datetimes
             all_public_oids = [o.oid for o in orb.search_exact(public=True)]
             # exclude reference data
             public_oids = list(set(all_public_oids) - set(ref_oids))
-            # NOTE: for "force_sync_library_objects", mod_datetimes are ignored
-            # if public_oids:
-                # server_dts = {oid: dts for oid, dts
-                              # in orb.get_mod_dts(oids=public_oids,
-                                                 # datetimes=True).items()}
-            # oids of newer objects on the server (or objects unknown to user)
-            # NOTE: for "force_sync_library_objects", ALL public server objs
-            # will be included, regardless of mod_datetimes
-            # newer_oids = []
-            # if server_dts:
-                # for server_oid, server_dt in server_dts.items():
-                    # client_dt = dts_by_oid.get(server_oid)
-                    # if earlier(client_dt, server_dt):
-                        # newer_oids.append(server_oid)
-                # for oid in newer_oids:
-                    # if dts_by_oid.get(oid):
-                        # del dts_by_oid[oid]
-            # if newer_oids:
             if public_oids:
                 server_oc = orb.get_oid_cnames(oids=public_oids)
                 all_ord = (DESERIALIZATION_ORDER +
@@ -1346,7 +1321,7 @@ class RepositoryService(ApplicationSession):
         yield self.register(get_objects, 'vger.get_objects',
                             RegisterOptions(details_arg='cb_details'))
 
-        def get_mod_dts(cname=None, oids=None):
+        def get_mod_dts(cnames=None, oids=None):
             """
             Retrieves the 'mod_datetime' for the objects with the specified
             oids.
@@ -1359,7 +1334,7 @@ class RepositoryService(ApplicationSession):
                 dict:  A dict mapping oids to 'mod_datetime' strings.
             """
             orb.log.info('* [rpc] vger.get_mod_dts() ...')
-            return orb.get_mod_dts(cname=cname, oids=oids)
+            return orb.get_mod_dts(cnames=cnames, oids=oids)
 
         yield self.register(get_object, 'vger.get_mod_dts')
 
