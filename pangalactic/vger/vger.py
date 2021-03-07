@@ -24,10 +24,12 @@ from pangalactic.core                  import __version__
 from pangalactic.core                  import (config, deleted, state,
                                                read_config, write_config,
                                                write_deleted, write_state)
-from pangalactic.core.access           import get_perms, is_cloaked
+from pangalactic.core.access           import (get_perms, is_cloaked,
+                                               is_global_admin)
 from pangalactic.core.entity           import Entity
 from pangalactic.core.mapping          import schema_maps
-from pangalactic.core.parametrics      import parameterz, set_dval, set_pval
+from pangalactic.core.parametrics      import (data_elementz, parameterz,
+                                               set_dval, set_pval)
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
                                                deserialize, serialize)
 from pangalactic.core.refdata          import ref_oids
@@ -662,9 +664,11 @@ class RepositoryService(ApplicationSession):
                     [2]:  oids of server objects with earlier mod_datetime(s)
                     [3]:  any oids in data that were not found on the server
                     [4]:  all oids in the "deleted" cache
+                    [5]:  parameter data for all objs requested
+                    [6]:  data element data for all objs requested
             """
             orb.log.info('* [rpc] vger.sync_objects(data)')
-            result = [[], [], [], []]
+            result = [[], [], [], [], [], {}, {}]
             if not data:
                 orb.log.info('  no data sent; returning empty result.')
                 return result
@@ -685,12 +689,15 @@ class RepositoryService(ApplicationSession):
             unknown_oids = list(set(data) - set(orb.get_oids()))
             for oid in unknown_oids:
                 del data[oid]
+            # parameter and data element data
+            parm_data = {oid: parameterz.get(oid) for oid in data}
+            de_data = {oid: data_elementz.get(oid) for oid in data}
+            # oids of newer objects on the server
             dts_by_oid = {oid: uncook_datetime(dt_str)
                           for oid, dt_str in data.items()}
             server_dts = {oid: dts for oid, dts
                           in orb.get_mod_dts(oids=list(data),
                                              datetimes=True).items()}
-            # oids of newer objects on the server
             newer_oids = []
             for server_oid, server_dt in server_dts.items():
                 client_dt = dts_by_oid.get(server_oid)
@@ -710,15 +717,17 @@ class RepositoryService(ApplicationSession):
                 newer_sobjs = serialize(orb, orb.get(oids=newer_oids),
                                         include_components=True)
                 result = [newer_sobjs, same_oids, older_oids, unknown_oids,
-                          deleted_oids]
+                          deleted_oids, parm_data, de_data]
             else:
                 result = [[], same_oids, older_oids, unknown_oids,
-                          deleted_oids]
+                          deleted_oids, parm_data, de_data]
             n_newer = len(result[0])
             n_same = len(result[1])
             n_older = len(result[2])
             n_unknown = len(result[3])
             n_deleted = len(result[4])
+            n_obj_parms = len(result[5])
+            n_obj_data = len(result[6])
             # orb.log.info('   result: {}'.format(str(result)))
             orb.log.info('   result: of the objects with oids in data ...')
             orb.log.info(f'   - {n_newer} have a newer copy on the server,')
@@ -727,6 +736,8 @@ class RepositoryService(ApplicationSession):
             orb.log.info(f'   - {n_unknown} are unknown to the server.')
             orb.log.info('     ... also included are:')
             orb.log.info(f'   - {n_deleted} oids from the "deleted" cache')
+            orb.log.info(f'   - parameters for {n_obj_parms} objects')
+            orb.log.info(f'   - data for {n_obj_data} objects')
             return result
 
         yield self.register(sync_objects, 'vger.sync_objects',
@@ -765,6 +776,8 @@ class RepositoryService(ApplicationSession):
                           [b] created by the user but are in 'deleted' cache.
                     [2]:  parameter data for all oids in data known to the
                           server
+                    [3]:  data element data for all oids in data known to the
+                          server
             """
             orb.log.info('* [rpc] vger.sync_library_objects()')
             data = data or {}
@@ -778,7 +791,7 @@ class RepositoryService(ApplicationSession):
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
                 # user = orb.select('Person', id=userid)
-            result = [[], [], []]
+            result = [[], [], {}, {}]
 
             # if any oids appear in "deleted" cache, publish a "deleted" msg
             for oid in deleted:
@@ -811,6 +824,7 @@ class RepositoryService(ApplicationSession):
                               in orb.get_mod_dts(oids=public_oids,
                                                  datetimes=True).items()}
             parm_data = {oid: parameterz.get(oid) for oid in public_oids}
+            de_data = {oid: data_elementz.get(oid) for oid in public_oids}
             # oids of newer objects on the server (or objects unknown to user)
             newer_oids = []
             if server_dts:
@@ -830,24 +844,26 @@ class RepositoryService(ApplicationSession):
                                   set(DESERIALIZATION_ORDER)))
                 sorted_newer_oids = sorted(newer_oc, key=lambda x:
                                            all_ord.index(newer_oc.get(x)))
-                result = [sorted_newer_oids, unknown_oids, parm_data]
+                result = [sorted_newer_oids, unknown_oids, parm_data, de_data]
                 # orb.log.info('   result: {}'.format(str(result)))
             else:
-                result = [[], unknown_oids, parm_data]
+                result = [[], unknown_oids, parm_data, de_data]
                 # orb.log.info('   result: {}'.format(str(result)))
             n_newer = len(result[0])
             n_unknown = len(result[1])
             n_obj_parms = len(result[2])
+            n_obj_data = len(result[3])
             orb.log.info('  result: of the oids sent to the server ...')
             orb.log.info(f'  - {n_newer} have a newer copy on the server,')
             orb.log.info(f'  - {n_unknown} are unknown to the server.')
             orb.log.info(f'  - parms retrieved for {n_obj_parms} objects.')
+            orb.log.info(f'  - data retrieved for {n_obj_data} objects.')
             return result
 
         yield self.register(sync_library_objects, 'vger.sync_library_objects',
                             RegisterOptions(details_arg='cb_details'))
 
-        def force_sync_library_objects(data, cb_details=None):
+        def force_sync_managed_objects(data, cb_details=None):
             """
             Get all "public" instances of ManagedObject on the server,
             regardless of their mod_datetimes.
@@ -873,7 +889,7 @@ class RepositoryService(ApplicationSession):
                           [a] not created by the user or
                           [b] created by the user but are in 'deleted' cache.
             """
-            orb.log.info('* [rpc] vger.force_sync_library_objects()')
+            orb.log.info('* [rpc] vger.force_sync_managed_objects()')
             data = data or {}
             n = len(data)
             orb.log.info(f'  received {n} item(s) in data')
@@ -901,7 +917,7 @@ class RepositoryService(ApplicationSession):
             unknown_oids = list(set(data) - set(orb.get_oids()))
             for oid in unknown_oids:
                 del data[oid]
-            # NOTE: for "force_sync_library_objects", ALL public server objs
+            # NOTE: for "force_sync_managed_objects", ALL public server objs
             # will be included, regardless of mod_datetimes
             all_public_oids = [o.oid for o in orb.search_exact(public=True)]
             # exclude reference data
@@ -925,8 +941,8 @@ class RepositoryService(ApplicationSession):
             orb.log.info(f'  - {n_unknown} are unknown to the server.')
             return result
 
-        yield self.register(force_sync_library_objects,
-                            'vger.force_sync_library_objects',
+        yield self.register(force_sync_managed_objects,
+                            'vger.force_sync_managed_objects',
                             RegisterOptions(details_arg='cb_details'))
 
         def sync_project(project_oid, data, cb_details=None):
@@ -947,25 +963,36 @@ class RepositoryService(ApplicationSession):
                     [2]:  oids of server objects with earlier mod_datetime(s)
                     [3]:  any oids in data that were not found on the server
                     [4]:  all oids in the "deleted" cache
+                    [5]:  parameter data for all project-owned objects
+                    [6]:  data element data for all objs requested
             """
             orb.log.info('* [rpc] vger.sync_project() ...')
             orb.log.info('   project oid: {}'.format(str(project_oid)))
-            data = data or {}
-            n = len(data)
-            orb.log.info(f'   received {n} items in data')
-            # if any oids appear in "deleted" cache, publish a "deleted" msg
-            for oid in deleted:
-                if oid in data:
-                    del data[oid]
-                    orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
-                    orb.log.info('  publishing "deleted" message ...')
-                    channel = 'vger.channel.public'
-                    self.publish(channel, {'deleted': oid})
-            result = [[], [], [], []]
+            userid = getattr(cb_details, 'caller_authid', '')
+            if userid:
+                user = orb.select('Person', id=userid)
+            result = [[], [], [], [], [], {}, {}]
             if not project_oid or project_oid == 'pgefobjects:SANDBOX':
+                orb.log.info('   no project oid or SANDBOX -- no result.')
+                return result
+            if not user:
+                orb.log.info('   no user found -- cannot authorize.')
                 return result
             project = orb.get(project_oid)
+            ras = orb.search_exact(cname='RoleAssignment', assigned_to=user,
+                                   role_assignment_context=project)
+            if not ras and not is_global_admin(user):
+                orb.log.info('   no project role nor GA -- not authorized.')
+                return result
             if project:
+                data = data or {}
+                n = len(data)
+                orb.log.info(f'   received {n} items in data')
+                # check data against "deleted" cache
+                for oid in deleted:
+                    if oid in data:
+                        del data[oid]
+                        orb.log.info(f'  in "deleted" cache: oid "{oid}"')
                 same_oids = []
                 older_oids = []
                 unknown_oids = []
@@ -986,6 +1013,11 @@ class RepositoryService(ApplicationSession):
                                  if o.mod_datetime == dts_by_oid.get(o.oid)]
                     older_oids = list(set(dts_by_oid.keys()) - set(same_oids)
                                       - set([o.oid for o in newer_objs]))
+                    # parameter and data element data
+                    parm_data = {oid: parameterz.get(oid)
+                                 for oid in set(same_oids + older_oids)}
+                    de_data = {oid: data_elementz.get(oid)
+                               for oid in set(same_oids + older_oids)}
                 else:
                     newer_objs = server_objs
                 deleted_oids = list(deleted)
@@ -993,10 +1025,10 @@ class RepositoryService(ApplicationSession):
                     newer_sobjs = serialize(orb, newer_objs,
                                             include_components=True)
                     result = [newer_sobjs, same_oids, older_oids, unknown_oids,
-                              deleted_oids]
+                              deleted_oids, parm_data, de_data]
                 else:
                     result = [[], same_oids, older_oids, unknown_oids,
-                              deleted_oids]
+                              deleted_oids, parm_data, de_data]
             else:
                 orb.log.info('   ** project was not found on the server. **')
             n_newer = len(result[0])
@@ -1004,6 +1036,8 @@ class RepositoryService(ApplicationSession):
             n_older = len(result[2])
             n_unknown = len(result[3])
             n_deleted = len(result[4])
+            n_obj_parms = len(result[5])
+            n_obj_data = len(result[6])
             # orb.log.info('   result: {}'.format(str(result)))
             orb.log.info('   result: of the oids/dts sent to the server ...')
             orb.log.info(f'   - {n_newer} have a newer copy on the server,')
@@ -1012,6 +1046,8 @@ class RepositoryService(ApplicationSession):
             orb.log.info(f'   - {n_unknown} are unknown to the server.')
             orb.log.info('     ... also included are:')
             orb.log.info(f'   - {n_deleted} oids from the "deleted" cache')
+            orb.log.info(f'   - parameters for {n_obj_parms} objects')
+            orb.log.info(f'   - data for {n_obj_data} objects')
             return result
 
         yield self.register(sync_project, 'vger.sync_project',
