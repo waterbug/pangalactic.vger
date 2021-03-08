@@ -1127,8 +1127,6 @@ class RepositoryService(ApplicationSession):
                 pid (str):  parameter id
                 value (str):  string representation of the value
                 units (str):  string representation of the units
-                mod_datetime (str):  string representation of the modified
-                    datetime
                 cb_details:  added by crossbar; not included in rpc signature
 
             Return:
@@ -1137,19 +1135,19 @@ class RepositoryService(ApplicationSession):
             # argstr = f'oid={oid}, pid={pid}, value={value}, units={units}'
             # orb.log.info(f'* [rpc] set_parameter({argstr})')
             # For now, just publish on public channel
-            set_pval(oid, pid, value, units=units, mod_datetime=mod_datetime)
+            set_pval(oid, pid, value, units=units)
             channel = 'vger.channel.public'
             # orb.log.info(f'  + publishing parameter on "{channel}" ...')
             self.publish(channel,
                          {'parameter set':
-                          [oid, pid, value, units, mod_datetime]})
+                          [oid, pid, value, units]})
             return 'success'
 
         yield self.register(set_parameter, 'vger.set_parameter',
                             RegisterOptions(details_arg='cb_details'))
 
         def set_data_element(oid=None, deid=None, value=None, units=None,
-                             mod_datetime=None, cb_details=None):
+                             cb_details=None):
             """
             Set a data element value.
 
@@ -1158,8 +1156,6 @@ class RepositoryService(ApplicationSession):
                 deid (str):  data element id
                 value (str):  string representation of the value
                 units (str):  string representation of the units
-                mod_datetime (str):  string representation of the modified
-                    datetime
                 cb_details:  added by crossbar; not included in rpc signature
 
             Return:
@@ -1168,12 +1164,12 @@ class RepositoryService(ApplicationSession):
             # argstr = f'oid={oid}, deid={deid}, value={value}, units={units}'
             # orb.log.info(f'* [rpc] set_data_element({argstr})')
             # For now, just publish on public channel
-            set_dval(oid, deid, value, units=units, mod_datetime=mod_datetime)
+            set_dval(oid, deid, value, units=units)
             channel = 'vger.channel.public'
             # orb.log.info(f'  + publishing data element on "{channel}" ...')
             self.publish(channel,
                          {'data element set':
-                          [oid, deid, value, mod_datetime]})
+                          [oid, deid, value, units]})
             return 'success'
 
         yield self.register(set_data_element, 'vger.set_data_element',
