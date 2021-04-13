@@ -53,6 +53,15 @@ class RepositoryService(ApplicationSession):
     """
     The Pan Galactic Engineering Repository Service container object
     (Application Session)
+
+    Note that the canonical way to add application-specific reference data is
+    to place file(s) containing serialized objects representing the reference
+    data into the "extra_data" directory, which the server will load when
+    started or restarted.  This applies particularly to DataElementDefinition,
+    ParameterDefinition, and ParameterContext objects but can apply to any
+    reference data.  For Parameters and Data Elements, these are critical since
+    the repository will ignore any parameter or data element instance data for
+    which corresponding definition objects do not exist.
     """
     # NOTE to developers:  
     # For the serialization structure of PGEF domain class definitions, see
