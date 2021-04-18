@@ -29,6 +29,8 @@ from pangalactic.core.access           import (get_perms, is_cloaked,
 from pangalactic.core.entity           import Entity
 from pangalactic.core.mapping          import schema_maps
 from pangalactic.core.parametrics      import (data_elementz, parameterz,
+                                               delete_parameter,
+                                               delete_data_element,
                                                set_dval, set_pval)
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
                                                deserialize, serialize)
@@ -1128,8 +1130,9 @@ class RepositoryService(ApplicationSession):
         yield self.register(data_update_item, 'vger.data_update_item',
                             RegisterOptions(details_arg='cb_details'))
 
-        def set_parameter(oid=None, pid=None, value=None, units=None,
-                          mod_datetime=None, cb_details=None):
+        # NOTE: this rpc is currently unnecessary, since parameters are added
+        # and/or set by object modifications, which are handled by vger.save()
+        def set_parameter(oid=None, pid=None, value=None, cb_details=None):
             """
             Set a parameter value.
 
@@ -1137,28 +1140,57 @@ class RepositoryService(ApplicationSession):
                 oid (str):  oid of the parent object or entity
                 pid (str):  parameter id
                 value (str):  string representation of the value
-                units (str):  string representation of the units
                 cb_details:  added by crossbar; not included in rpc signature
 
-            Return:
+            Returns:
                 result (str):  'success'
             """
-            # argstr = f'oid={oid}, pid={pid}, value={value}, units={units}'
+            # argstr = f'oid={oid}, pid={pid}, value={value}'
             # orb.log.info(f'* [rpc] set_parameter({argstr})')
             # For now, just publish on public channel
-            set_pval(oid, pid, value, units=units)
+            set_pval(oid, pid, value)
             channel = 'vger.channel.public'
             # orb.log.info(f'  + publishing parameter on "{channel}" ...')
             self.publish(channel,
                          {'parameter set':
-                          [oid, pid, value, units]})
+                          [oid, pid, value]})
             return 'success'
 
         yield self.register(set_parameter, 'vger.set_parameter',
                             RegisterOptions(details_arg='cb_details'))
 
-        def set_data_element(oid=None, deid=None, value=None, units=None,
-                             cb_details=None):
+        # NOTE: this rpc is necessary because the serialization format allows
+        # data to be incomplete, so absence does not imply deletion (and anyway
+        # it is better to have an positive assertion for removals)
+        def del_parm(oid=None, pid=None, cb_details=None):
+            """
+            Remove a parameter from an object.
+
+            Keyword Args:
+                oid (str):  oid of the parent object or entity
+                pid (str):  parameter id
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                result (str):  message about the result
+            """
+            argstr = f'oid={oid}, pid={pid}'
+            orb.log.info(f'* [rpc] del_parm({argstr})')
+            # For now, just publish on public channel
+            delete_parameter(oid, pid)
+            channel = 'vger.channel.public'
+            orb.log.info(f'  + publishing "parm del" on "{channel}" ...')
+            self.publish(channel,
+                         {'parm del': [oid, pid]})
+            return f'parameter "{pid}" removed from object "{oid}".'
+
+        yield self.register(del_parm, 'vger.del_parm',
+                            RegisterOptions(details_arg='cb_details'))
+
+        # NOTE: this rpc is currently unnecessary, since data elements are
+        # added and/or set by object modifications, which are handled by
+        # vger.save()
+        def set_data_element(oid=None, deid=None, value=None, cb_details=None):
             """
             Set a data element value.
 
@@ -1166,24 +1198,51 @@ class RepositoryService(ApplicationSession):
                 oid (str):  oid of the parent object or entity
                 deid (str):  data element id
                 value (str):  string representation of the value
-                units (str):  string representation of the units
                 cb_details:  added by crossbar; not included in rpc signature
 
-            Return:
+            Returns:
                 result (str):  'success'
             """
-            # argstr = f'oid={oid}, deid={deid}, value={value}, units={units}'
+            # argstr = f'oid={oid}, deid={deid}, value={value}'
             # orb.log.info(f'* [rpc] set_data_element({argstr})')
             # For now, just publish on public channel
-            set_dval(oid, deid, value, units=units)
+            set_dval(oid, deid, value)
             channel = 'vger.channel.public'
             # orb.log.info(f'  + publishing data element on "{channel}" ...')
             self.publish(channel,
                          {'data element set':
-                          [oid, deid, value, units]})
+                          [oid, deid, value]})
             return 'success'
 
         yield self.register(set_data_element, 'vger.set_data_element',
+                            RegisterOptions(details_arg='cb_details'))
+
+        # NOTE: this rpc is necessary because the serialization format allows
+        # data to be incomplete, so absence does not imply deletion (and anyway
+        # it is better to have an positive assertion for removals)
+        def del_de(oid=None, deid=None, cb_details=None):
+            """
+            Remove a data element from an object.
+
+            Keyword Args:
+                oid (str):  oid of the parent object or entity
+                deid (str):  data element id
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                result (str):  message about the result
+            """
+            argstr = f'oid={oid}, deid={deid}'
+            orb.log.info(f'* [rpc] del_de({argstr})')
+            # For now, just publish on public channel
+            delete_data_element(oid, deid)
+            channel = 'vger.channel.public'
+            orb.log.info(f'  + publishing "de del" on "{channel}" ...')
+            self.publish(channel,
+                         {'de del': [oid, deid]})
+            return f'data element "{deid}" removed from object "{oid}".'
+
+        yield self.register(del_de, 'vger.del_de',
                             RegisterOptions(details_arg='cb_details'))
 
         def save_entity(oid=None, creator=None, modifier=None,
@@ -1210,7 +1269,7 @@ class RepositoryService(ApplicationSession):
                     entity)
                 cb_details:  added by crossbar; not included in rpc signature
 
-            Return:
+            Returns:
                 result (str):  'success'
             """
             argstr = f'oid={oid}, creator={creator}, modifier={modifier}, '
