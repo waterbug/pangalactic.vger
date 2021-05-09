@@ -23,7 +23,8 @@ from autobahn.wamp.types   import RegisterOptions
 from pangalactic.core                  import __version__
 from pangalactic.core                  import (config, deleted, state,
                                                read_config, write_config,
-                                               write_deleted, write_state)
+                                               read_deleted, write_deleted,
+                                               write_state)
 from pangalactic.core.access           import (get_perms, is_cloaked,
                                                is_global_admin)
 from pangalactic.core.entity           import Entity
@@ -127,6 +128,14 @@ class RepositoryService(ApplicationSession):
                         except:
                             orb.log.info('    exception in deserializing ...')
                             orb.log.info(traceback.format_exc())
+        # =====================================================================
+        # load "deleted" cache from file, if it exists, and check that the oids
+        # referenced in that file do not exist in the db, or if so delete them.
+        path_of_deleted = os.path.join(home, 'deleted')
+        if os.path.exists(path_of_deleted):
+            read_deleted(path_of_deleted)
+        self.audit_deletions()
+        # =====================================================================
         orb.dump_all()
         dispatcher.connect(self.on_log_info_msg, 'log info msg')
         dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
@@ -142,6 +151,19 @@ class RepositoryService(ApplicationSession):
         else:
             self.log.info("* public key loaded: {}".format(
                                                     self._key.public_key()))
+
+    def audit_deletions(self):
+        """
+        Audit the db to ensure that all oids in the "deleted" cache have indeed
+        been deleted.
+        """
+        orb.log.info('* performing self-audit of deletions ...')
+        supposed_to_be_deleted = list(set(deleted) & set(orb.get_oids()))
+        if supposed_to_be_deleted:
+            orb.log.info('  deletions needed: {supposed_to_be_deleted}')
+            orb.delete(orb.get(oids=supposed_to_be_deleted))
+        else:
+            orb.log.info('  passed.')
 
     def on_log_info_msg(self, msg=''):
         orb.log.info(msg)
@@ -409,6 +431,20 @@ class RepositoryService(ApplicationSession):
                 sobjs_list += '   + {} ({})\n'.format(so.get('id', '[no id]'),
                                                       so['_cname'])
             orb.log.info(sobjs_list)
+            # ================================================================
+            # first, check to make sure none of the submitted oids are in the
+            # "deleted" cache ...
+            unauth_ids = []
+            for oid, so in sobjs_unique.items():
+                if oid in deleted and so in sobjs:
+                    unauth_ids.append(so.get('id') or 'unknown_id')
+                    sobjs.remove(so)
+                    orb.log.info(f'  "{oid}" was in "deleted" cache; ignored.')
+            if not sobjs:
+                orb.log.info('  all oids submitted were in "deleted".')
+                return dict(new_obj_dts={}, mod_obj_dts={}, unauth=unauth_ids,
+                            no_owners=[])
+            # ================================================================
             userid = getattr(cb_details, 'caller_authid', 'unknown')
             orb.log.info('  caller authid: {}'.format(str(userid)))
             user_obj = orb.select('Person', id=userid)
@@ -439,8 +475,8 @@ class RepositoryService(ApplicationSession):
                     # orb.log.info('  unauth (perms: {})'.format(str(perms)))
             unauthorized = {oid:so for oid, so in sobjs_unique.items()
                             if oid not in authorized}
-            unauth_ids = [unauthorized[oid].get('id', 'no id')
-                          for oid in unauthorized]
+            unauth_ids += [unauthorized[oid].get('id', 'no id')
+                           for oid in unauthorized]
             if not authorized:
                 orb.log.info('  no save: {} unauthorized object(s).'.format(
                                                           len(unauthorized)))
@@ -685,14 +721,15 @@ class RepositoryService(ApplicationSession):
                 return result
             n = len(data)
             orb.log.info(f'  received {n} items in data')
-            # if any oids appear in 'deleted' cache, publish a "deleted" msg
+            # ================================================================
+            # first, a quick self-audit to make sure all oids in the "deleted"
+            # cache have really been deleted from the db ...
+            self.audit_deletions()
+            # ================================================================
+            # if any oids in data are in 'deleted', delete them
             for oid in deleted:
                 if oid in data:
                     del data[oid]
-                    orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
-                    orb.log.info('  publishing "deleted" message ...')
-                    channel = 'vger.channel.public'
-                    self.publish(channel, {'deleted': oid})
             # remove any refdata
             non_ref = set(data.keys()) - set(ref_oids)
             data = {oid: data[oid] for oid in non_ref}
