@@ -684,6 +684,45 @@ class RepositoryService(ApplicationSession):
         yield self.register(delete, 'vger.delete',
                             RegisterOptions(details_arg='cb_details'))
 
+        def freeze(oids, cb_details=None):
+            """
+            Freezes a set of objects.
+
+            Args:
+                oids (list of str):  oids of the objects to freeze
+
+            Keyword Args:
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                result (tuple of lists):  frozen oids, unauthorized oids
+            """
+            orb.log.info('* vger.freeze({})'.format(str(oids)))
+            if not oids:
+                orb.log.info('  called with no oids, nothing frozen.')
+                return ([], [])
+            # TODO:  check that user has permission to freeze
+            userid = getattr(cb_details, 'caller_authid', None)
+            user = orb.select('Person', id=userid)
+            objs = orb.get(oids=oids)
+            unauth, frozen = [], []
+            for obj in objs:
+                if 'modify' in get_perms(obj, user=user):
+                    obj.frozen = True
+                    frozen.append(obj.oid)
+                else:
+                    unauth.append(obj.oid)
+            orb.log.info(f'  frozen: {str(frozen)}')
+            orb.log.info(f'  unauth: {str(unauth)}')
+            if frozen:
+                orb.log.info('   publishing "frozen" to public channel.')
+                channel = 'vger.channel.public'
+                self.publish(channel, {'frozen': frozen})
+            return (frozen, unauth)
+
+        yield self.register(freeze, 'vger.freeze',
+                            RegisterOptions(details_arg='cb_details'))
+
         def sync_objects(data, cb_details=None):
             """
             Sync the objects referenced by the data.  NOTE:  oids in the data
