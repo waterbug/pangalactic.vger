@@ -712,6 +712,7 @@ class RepositoryService(ApplicationSession):
                     frozen.append(obj.oid)
                 else:
                     unauth.append(obj.oid)
+            orb.db.commit()
             orb.log.info(f'  frozen: {str(frozen)}')
             orb.log.info(f'  unauth: {str(unauth)}')
             if frozen:
@@ -721,6 +722,48 @@ class RepositoryService(ApplicationSession):
             return (frozen, unauth)
 
         yield self.register(freeze, 'vger.freeze',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def thaw(oids, cb_details=None):
+            """
+            Freezes a set of objects.
+
+            Args:
+                oids (list of str):  oids of the objects to thaw
+
+            Keyword Args:
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                result (tuple of lists):  thawed oids, unauthorized oids
+            """
+            orb.log.info('* vger.thaw({})'.format(str(oids)))
+            if not oids:
+                orb.log.info('  called with no oids, nothing thawed.')
+                return ([], [])
+            userid = getattr(cb_details, 'caller_authid', None)
+            user = orb.select('Person', id=userid)
+            if not is_global_admin(user):
+                orb.log.info('  caller is not global admin; ignored.')
+                return ([], oids)
+            objs = orb.get(oids=oids)
+            unauth, thawed = [], []
+            for obj in objs:
+                try:
+                    obj.thawed = True
+                    thawed.append(obj.oid)
+                except:
+                    unauth.append(obj.oid)
+            orb.db.commit()
+            orb.log.info(f'  thawed: {str(thawed)}')
+            orb.log.info(f'  unauth: {str(unauth)}')
+            if thawed:
+                orb.log.info('   publishing "thawed" to public channel.')
+                channel = 'vger.channel.public'
+                self.publish(channel, {'thawed': thawed})
+            return (thawed, unauth)
+
+        yield self.register(thaw, 'vger.thaw',
                             RegisterOptions(details_arg='cb_details'))
 
         def sync_objects(data, cb_details=None):
