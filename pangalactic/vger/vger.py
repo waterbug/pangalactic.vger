@@ -704,13 +704,17 @@ class RepositoryService(ApplicationSession):
             # TODO:  check that user has permission to freeze
             userid = getattr(cb_details, 'caller_authid', None)
             user = orb.select('Person', id=userid)
-            objs = orb.get(oids=oids)
             unauth, frozen = [], []
-            for obj in objs:
+            dts = dtstamp()
+            for obj in orb.get(oids=oids):
                 if 'modify' in get_perms(obj, user=user):
+                    orb.log.info(f'  - freeze authorized for {obj.oid}.')
                     obj.frozen = True
+                    obj.mod_datetime = dts
+                    obj.modifier = user
                     frozen.append(obj.oid)
                 else:
+                    orb.log.info(f'  - freeze NOT authorized for {obj.oid}.')
                     unauth.append(obj.oid)
             orb.db.commit()
             orb.log.info(f'  frozen: {str(frozen)}')
@@ -748,9 +752,12 @@ class RepositoryService(ApplicationSession):
                 return ([], oids)
             objs = orb.get(oids=oids)
             unauth, thawed = [], []
+            dts = dtstamp()
             for obj in objs:
                 try:
-                    obj.thawed = True
+                    obj.frozen = False
+                    obj.mod_datetime = dts
+                    obj.modifier = user
                     thawed.append(obj.oid)
                 except:
                     unauth.append(obj.oid)
