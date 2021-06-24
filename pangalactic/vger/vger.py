@@ -1532,16 +1532,24 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('        no oids in request, returning empty.')
                 return []
             # TODO: use get_perms() to determine authorization
-            # userid = getattr(cb_details, 'caller_authid', '')
-            # if userid:
-                # user = orb.select('Person', id=userid)
+            userid = getattr(cb_details, 'caller_authid', '')
+            user_obj = None
+            if userid:
+                user_obj = orb.select('Person', id=userid)
+            if not user_obj:
+                orb.log.info('        no user found, returning empty.')
+                return []
             # exclude all ref data
             non_ref_oids = list(set(oids) - set(ref_oids))
             objs = orb.get(oids=non_ref_oids)
             if objs:
                 # TODO:  if include_components is True, get_perms() should be
                 # used to determine the user's access to the components ...
-                return serialize(orb, objs,
+                auth_objs = []
+                for obj in objs:
+                    if 'view' in get_perms(obj, user=user_obj):
+                        auth_objs.append(obj)
+                return serialize(orb, auth_objs,
                                  include_components=include_components)
             else:
                 return []
