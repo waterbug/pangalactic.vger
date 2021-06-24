@@ -1536,9 +1536,6 @@ class RepositoryService(ApplicationSession):
             user_obj = None
             if userid:
                 user_obj = orb.select('Person', id=userid)
-            if not user_obj:
-                orb.log.info('        no user found, returning empty.')
-                return []
             # exclude all ref data
             non_ref_oids = list(set(oids) - set(ref_oids))
             objs = orb.get(oids=non_ref_oids)
@@ -1547,7 +1544,8 @@ class RepositoryService(ApplicationSession):
                 # used to determine the user's access to the components ...
                 auth_objs = []
                 for obj in objs:
-                    if 'view' in get_perms(obj, user=user_obj):
+                    if (getattr(obj, 'public', True)
+                        or 'view' in get_perms(obj, user=user_obj)):
                         auth_objs.append(obj)
                 return serialize(orb, auth_objs,
                                  include_components=include_components)
