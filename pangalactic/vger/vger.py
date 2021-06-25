@@ -712,7 +712,7 @@ class RepositoryService(ApplicationSession):
                     obj.frozen = True
                     obj.mod_datetime = dts
                     obj.modifier = user
-                    frozen.append((obj.oid, str(dts), user.oid))
+                    frozen.append(obj.oid)
                 else:
                     orb.log.info(f'  - freeze NOT authorized for {obj.oid}.')
                     unauth.append(obj.oid)
@@ -758,7 +758,7 @@ class RepositoryService(ApplicationSession):
                     obj.frozen = False
                     obj.mod_datetime = dts
                     obj.modifier = user
-                    thawed.append((obj.oid, str(dts), user.oid))
+                    thawed.append(obj.oid)
                 except:
                     unauth.append(obj.oid)
             orb.db.commit()
