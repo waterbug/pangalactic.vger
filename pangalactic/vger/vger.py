@@ -29,7 +29,9 @@ from pangalactic.core.access           import (get_perms, is_cloaked,
                                                is_global_admin)
 from pangalactic.core.entity           import Entity
 from pangalactic.core.mapping          import schema_maps
-from pangalactic.core.parametrics      import (data_elementz, parameterz,
+from pangalactic.core.parametrics      import (add_default_parameters,
+                                               add_default_data_elements,
+                                               data_elementz, parameterz,
                                                delete_parameter,
                                                delete_data_element,
                                                set_dval, set_pval)
@@ -122,6 +124,17 @@ class RepositoryService(ApplicationSession):
                             if objs:
                                 n = len(objs)
                                 orb.log.info(f'    loaded {n} objs.')
+                                # ensure all HW items have default parms/des
+                                HW = orb.classes['HardwareProduct']
+                                hw = [o for o in objs if isinstance(o, HW)]
+                                if hw:
+                                    msg = '- adding default parameters and '
+                                    msg += 'data elements to HW products ... '
+                                    orb.log.info(f'    {msg}')
+                                    for product in hw:
+                                        add_default_parameters(product)
+                                        add_default_data_elements(product)
+                                orb.log.info('    done.')
                             else:
                                 msg = '0 new or modified objs in data.'
                                 orb.log.info('    {}'.format(msg))
@@ -387,7 +400,6 @@ class RepositoryService(ApplicationSession):
             """
             orb.log.info('* [rpc] vger.save_uploaded_file() ...')
             orb.log.info(f'  fname: {fname}')
-            # write to file
             return 'success'
 
         yield self.register(save_uploaded_file, 'vger.save_uploaded_file',
