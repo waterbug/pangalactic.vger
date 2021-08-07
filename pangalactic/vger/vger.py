@@ -716,26 +716,29 @@ class RepositoryService(ApplicationSession):
             # TODO:  check that user has permission to freeze
             userid = getattr(cb_details, 'caller_authid', None)
             user = orb.select('Person', id=userid)
-            unauth, frozen = [], []
+            unauth, frozens = [], []
             dts = dtstamp()
+            channel = 'vger.channel.public'
             for obj in orb.get(oids=oids):
                 if 'modify' in get_perms(obj, user=user):
                     orb.log.info(f'  - freeze authorized for {obj.oid}.')
                     obj.frozen = True
                     obj.mod_datetime = dts
                     obj.modifier = user
-                    frozen.append(obj.oid)
+                    frozens.append(obj.oid)
+                    self.publish(channel, {'frozen': obj.oid})
                 else:
                     orb.log.info(f'  - freeze NOT authorized for {obj.oid}.')
                     unauth.append(obj.oid)
             orb.db.commit()
-            orb.log.info(f'  frozen: {str(frozen)}')
+            orb.log.info(f'  frozen: {str(frozens)}')
             orb.log.info(f'  unauth: {str(unauth)}')
-            if frozen:
-                orb.log.info('   publishing "frozen" to public channel.')
+            if frozens:
+                msg = 'publishing "freeze completed" to public channel.'
+                orb.log.info(f'   {msg}')
                 channel = 'vger.channel.public'
-                self.publish(channel, {'frozen': frozen})
-            return (frozen, unauth)
+                self.publish(channel, {'freeze completed': frozens})
+            return frozens, unauth
 
         yield self.register(freeze, 'vger.freeze',
                             RegisterOptions(details_arg='cb_details'))
