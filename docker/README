@@ -78,3 +78,48 @@ pangalactic.vger git repository -- git will ignore 'build.sh', 'Dockerfile',
     anonymous docker volume that is created by the container at startup and is
     "owned" by that container.
 
+Upgrading the vger docker image and starting a new container
+------------------------------------------------------------
+
+To build and run an image for a new version of vger, the procedure is:
+
+* stop the current vger container -- *IMPORTANT*: use the "-t 300" option to
+  ensure that vger has adequate time to dump its database to a backup file
+  before docker terminates the process:
+
+    docker stop -t 300 [vger container]
+
+* remove the current vger container
+
+    docker rm [vger container]
+
+* remove the current vger image
+
+    docker rmi [vger image]
+
+* prune the associated volume
+
+    docker volume prune
+
+* build the new image ("build.sh" script in the "docker" directory)
+
+* to restore the previous database, use the database backup file
+  ("db-dump-[datetime].yaml") found in the "backup" subdirectory of the vger
+  home directory, which was created when vger was shut down in the first step
+
+  - apply any transformations needed by running the "transform.py" script.
+  - copy the resulting .yaml file into the "extra_data" directory in vger home
+    -- vger will see it there at start up and will load it.
+
+* remove all *.json files in vger home -- new ones will be created when vger
+  starts up and deserializes the database backup.
+
+* *IMPORTANT*:  if there are any schema changes, remove the "cache"
+  subdirectory of vger home -- when vger starts up it will create a new "cache"
+  with the new schema.
+
+* start up a new container using the "run_vger_detached.sh" script.
+
+* after vger has completed its start-up, remove the database backup file from
+  the "extra_data" directory.
+
