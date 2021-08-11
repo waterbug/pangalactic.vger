@@ -109,11 +109,16 @@ class RepositoryService(ApplicationSession):
         extra_data_path = os.path.join(orb.home, 'extra_data')
         if os.path.exists(extra_data_path) and os.listdir(extra_data_path):
             orb.log.info('* "extra_data" is present, checking ...')
+            already_loaded = state.get('extra_data_loaded') or []
             extra_data_fnames = os.listdir(extra_data_path)
             extra_data_fnames.sort()
             for fname in extra_data_fnames:
                 if fname.endswith('.yaml'):
-                    orb.log.info(f'  - found "{fname}", loading ...')
+                    orb.log.info(f'  - found "{fname}"')
+                    if fname in already_loaded:
+                        orb.log.info('    + previously loaded, skipping ...')
+                        continue
+                    orb.log.info('    + loading ...')
                     fpath = os.path.join(extra_data_path, fname)
                     with open(fpath) as f:
                         data = f.read()
@@ -134,6 +139,12 @@ class RepositoryService(ApplicationSession):
                                     for product in hw:
                                         add_default_parameters(product)
                                         add_default_data_elements(product)
+                                        # freeze all non-project specs
+                                        Project = orb.classes['Project']
+                                        if not isinstance(product.owner,
+                                                          Project):
+                                            product.frozen = True
+                                    orb.db.commit()
                                 orb.log.info('    done.')
                             else:
                                 msg = '0 new or modified objs in data.'
@@ -141,6 +152,8 @@ class RepositoryService(ApplicationSession):
                         except:
                             orb.log.info('    exception in deserializing ...')
                             orb.log.info(traceback.format_exc())
+                    already_loaded.append(fname)
+                    state['extra_data_loaded'] = already_loaded
         # =====================================================================
         # load "deleted" cache from file, if it exists, and check that the oids
         # referenced in that file do not exist in the db, or if so delete them.
