@@ -100,16 +100,15 @@ class RepositoryService(ApplicationSession):
                 orb.assign_test_parameters(hw, parms=gsfc_mel_parms,
                                            des=gsfc_mel_des)
                 state['test_project_loaded'] = True
-            write_state(os.path.join(orb.home, 'state'))
         # create an "uploads" directory if there isn't one
         self.uploads_path = os.path.join(orb.home, 'vault', 'uploads')
         if not os.path.exists(self.uploads_path):
             os.makedirs(self.uploads_path)
         # load data from "extra_data" dir
         extra_data_path = os.path.join(orb.home, 'extra_data')
+        already_loaded = state.get('extra_data_loaded') or []
         if os.path.exists(extra_data_path) and os.listdir(extra_data_path):
             orb.log.info('* "extra_data" is present, checking ...')
-            already_loaded = state.get('extra_data_loaded') or []
             extra_data_fnames = os.listdir(extra_data_path)
             extra_data_fnames.sort()
             for fname in extra_data_fnames:
@@ -206,6 +205,7 @@ class RepositoryService(ApplicationSession):
         dump file into a new database and parameter / data element caches after
         the server is restarted.
         """
+        write_state(os.path.join(orb.home, 'state'))
         # dump_all() saves all caches and writes db to a yaml file
         orb.dump_all()
 
