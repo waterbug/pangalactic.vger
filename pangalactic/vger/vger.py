@@ -758,7 +758,7 @@ class RepositoryService(ApplicationSession):
 
         def thaw(oids, cb_details=None):
             """
-            Freezes a set of objects.
+            Thaws a set of objects.
 
             Args:
                 oids (list of str):  oids of the objects to thaw
