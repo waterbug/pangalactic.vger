@@ -161,6 +161,32 @@ class RepositoryService(ApplicationSession):
             read_deleted(path_of_deleted)
         self.audit_deletions()
         # =====================================================================
+        # check HardwareProduct and Template 'id' attributes to make sure they
+        # are consistent with the current owners and ProductType abbreviations
+        orb.log.info('* validating all HW and Template ids ...')
+        hw = orb.get_by_type('HardwareProduct')
+        hw += orb.get_by_type('Template')
+        id_mods = 0
+        dts = dtstamp()
+        id_corrections = []
+        for p in hw:
+            generated_id = orb.gen_product_id(p)
+            if p.id != generated_id:
+                p.id = generated_id
+                p.mod_datetime = dts
+                id_corrections.append(generated_id)
+        if id_corrections:
+            # NOTE: because the mod_datetimes have been updated, all clients
+            # will get the new hw object ids when they sync.
+            orb.db.commit()
+            id_mods = len(id_corrections)
+            orb.log.info(f'  ids corrected for {id_mods} HW & Template items:')
+            id_corrections.sort()
+            for id_ in id_corrections:
+                orb.log.info(f'  -> {id_}')
+        else:
+            orb.log.info('  all HW and Template ids are correct.')
+        # =====================================================================
         orb.dump_all()
         dispatcher.connect(self.on_log_info_msg, 'log info msg')
         dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
