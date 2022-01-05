@@ -34,6 +34,7 @@ from pangalactic.core.parametrics      import (add_default_parameters,
                                                data_elementz, parameterz,
                                                delete_parameter,
                                                delete_data_element,
+                                               mode_defz,
                                                set_dval, set_pval)
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
                                                deserialize, serialize)
@@ -187,7 +188,7 @@ class RepositoryService(ApplicationSession):
         else:
             orb.log.info('  all HW and Template ids are correct.')
         # =====================================================================
-        orb.dump_all()
+        # orb.dump_all()
         dispatcher.connect(self.on_log_info_msg, 'log info msg')
         dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
         atexit.register(self.shutdown)
@@ -969,6 +970,8 @@ class RepositoryService(ApplicationSession):
                           server
                     [3]:  data element data for all oids in data known to the
                           server
+                    [4]:  all mode definitions (serialized "mode_defz" cache)
+                    [5]:  datetime stamp for mode definitions ("mode_defz_dts")
             """
             orb.log.info('* [rpc] vger.sync_library_objects()')
             data = data or {}
@@ -982,7 +985,7 @@ class RepositoryService(ApplicationSession):
             # userid = getattr(cb_details, 'caller_authid', '')
             # if userid:
                 # user = orb.select('Person', id=userid)
-            result = [[], [], {}, {}]
+            result = [[], [], {}, {}, '', '']
 
             # if any oids appear in "deleted" cache, publish a "deleted" msg
             for oid in deleted:
@@ -1016,6 +1019,8 @@ class RepositoryService(ApplicationSession):
                                                  datetimes=True).items()}
             parm_data = {oid: parameterz.get(oid) for oid in public_oids}
             de_data = {oid: data_elementz.get(oid) for oid in public_oids}
+            md_data = yaml.safe_dump(mode_defz, default_flow_style=False)
+            md_dts = state.get('mode_defz_dts') or str(dtstamp())
             # oids of newer objects on the server (or objects unknown to user)
             newer_oids = []
             if server_dts:
@@ -1035,10 +1040,12 @@ class RepositoryService(ApplicationSession):
                                   set(DESERIALIZATION_ORDER)))
                 sorted_newer_oids = sorted(newer_oc, key=lambda x:
                                            all_ord.index(newer_oc.get(x)))
-                result = [sorted_newer_oids, unknown_oids, parm_data, de_data]
+                result = [sorted_newer_oids, unknown_oids, parm_data, de_data,
+                          md_data, md_dts]
                 # orb.log.info('   result: {}'.format(str(result)))
             else:
-                result = [[], unknown_oids, parm_data, de_data]
+                result = [[], unknown_oids, parm_data, de_data, md_data,
+                          md_dts]
                 # orb.log.info('   result: {}'.format(str(result)))
             n_newer = len(result[0])
             n_unknown = len(result[1])
@@ -1049,6 +1056,7 @@ class RepositoryService(ApplicationSession):
             orb.log.info(f'  - {n_unknown} are unknown to the server.')
             orb.log.info(f'  - parms retrieved for {n_obj_parms} objects.')
             orb.log.info(f'  - data retrieved for {n_obj_data} objects.')
+            orb.log.info('  - mode_defz data and mode_defz_dts retrieved.')
             return result
 
         yield self.register(sync_library_objects, 'vger.sync_library_objects',
@@ -1475,6 +1483,67 @@ class RepositoryService(ApplicationSession):
             return 'success'
 
         yield self.register(save_entity, 'vger.save_entity',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def get_mode_defs():
+            """
+            Get the mode_defz cache.
+
+            Returns:
+                data (tuple of str):  [0] last-modified datetime stamp, [1]
+                    serialized (yaml) mode_defz cache
+            """
+            data = yaml.safe_dump(mode_defz, default_flow_style=False)
+            if not state.get('mode_defz_dts'):
+                state['mode_defz_dts'] = str(dtstamp())
+            dts = state['mode_defz_dts']
+            return dts, data
+
+        yield self.register(get_mode_defs, 'vger.get_mode_defs')
+
+        def update_mode_defs(project_oid=None, data=None, cb_details=None):
+            """
+            Update the mode_defz cache.
+
+            Keyword Args:
+                project_oid (str):  oid of the project
+                data (str):  serialized mode data for the project
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                dts (str):  stringified datetime stamp
+            """
+            orb.log.info('* [rpc] vger.update_mode_defs() ...')
+            userid = getattr(cb_details, 'caller_authid', '')
+            user = orb.select('Person', id=userid)
+            # get role assignments in project
+            project = orb.get(project_oid)
+            if not project:
+                return 'no such project'
+            ras = orb.search_exact(cname='RoleAssignment',
+                                   assigned_to=user,
+                                   role_assignment_context=project)
+            role_names = set([ra.assigned_role.name for ra in ras])
+            if ((set(['Administrator', 'Systems Engineer']) & role_names)
+                or is_global_admin(user)) and data:
+                mode_data = yaml.safe_load(data)
+                if project_oid in mode_defz:
+                    del mode_defz[project_oid]
+                mode_defz[project_oid] = mode_data
+                dts = str(dtstamp())
+                state['mode_defz_dts'] = dts
+                msg = 'publishing "new mode defs" on public channel ...'
+                orb.log.info(f'    {msg}')
+                channel = 'vger.channel.public'
+                ser_mode_defs = yaml.safe_dump(mode_defz,
+                                               default_flow_style=False)
+                self.publish(channel, {'new mode defs':
+                                       (dts, ser_mode_defs)})
+                return dts
+            else:
+                return 'unauthorized'
+
+        yield self.register(update_mode_defs, 'vger.update_mode_defs',
                             RegisterOptions(details_arg='cb_details'))
 
         def search_exact(**kw):
