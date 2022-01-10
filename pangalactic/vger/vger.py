@@ -1020,7 +1020,7 @@ class RepositoryService(ApplicationSession):
             parm_data = {oid: parameterz.get(oid) for oid in public_oids}
             de_data = {oid: data_elementz.get(oid) for oid in public_oids}
             md_data = yaml.safe_dump(mode_defz, default_flow_style=False)
-            md_dts = state.get('mode_defz_dts') or str(dtstamp())
+            md_dts = state.get('mode_defz_dts') or ''
             # oids of newer objects on the server (or objects unknown to user)
             newer_oids = []
             if server_dts:
@@ -1520,26 +1520,33 @@ class RepositoryService(ApplicationSession):
             project = orb.get(project_oid)
             if not project:
                 return 'no such project'
+            if not data:
+                return 'no data submitted'
+            pname = project.id
+            orb.log.info(f'        mode defs data received for {pname}')
+            orb.log.info('============================================')
+            orb.log.info(f'{data}')
+            orb.log.info('============================================')
             ras = orb.search_exact(cname='RoleAssignment',
                                    assigned_to=user,
                                    role_assignment_context=project)
             role_names = set([ra.assigned_role.name for ra in ras])
             if ((set(['Administrator', 'Systems Engineer']) & role_names)
-                or is_global_admin(user)) and data:
+                or is_global_admin(user)):
                 mode_data = yaml.safe_load(data)
                 if project_oid in mode_defz:
                     del mode_defz[project_oid]
                 mode_defz[project_oid] = mode_data
-                dts = str(dtstamp())
-                state['mode_defz_dts'] = dts
+                md_dts = str(dtstamp())
+                state['mode_defz_dts'] = md_dts
                 msg = 'publishing "new mode defs" on public channel ...'
                 orb.log.info(f'    {msg}')
                 channel = 'vger.channel.public'
                 ser_mode_defs = yaml.safe_dump(mode_defz,
                                                default_flow_style=False)
                 self.publish(channel, {'new mode defs':
-                                       (dts, ser_mode_defs)})
-                return dts
+                                       (md_dts, ser_mode_defs)})
+                return md_dts
             else:
                 return 'unauthorized'
 
