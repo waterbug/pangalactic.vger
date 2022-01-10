@@ -1545,7 +1545,7 @@ class RepositoryService(ApplicationSession):
                 ser_mode_defs = yaml.safe_dump(mode_defz,
                                                default_flow_style=False)
                 self.publish(channel, {'new mode defs':
-                                       (md_dts, ser_mode_defs)})
+                                       (md_dts, ser_mode_defs, userid)})
                 return md_dts
             else:
                 return 'unauthorized'
