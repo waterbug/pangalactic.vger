@@ -1553,6 +1553,127 @@ class RepositoryService(ApplicationSession):
         yield self.register(update_mode_defs, 'vger.update_mode_defs',
                             RegisterOptions(details_arg='cb_details'))
 
+        def set_sys_mode_datum(project_oid=None, link_oid=None, mode=None,
+                               value=None, cb_details=None):
+            """
+            Set the mode value for the specified system link in the specified
+            project.
+
+            Keyword Args:
+                project_oid (str):  oid of the project
+                link_oid (str):  oid of the system link (acu or psu)
+                mode (str):  name of the mode
+                value (str):  value of the mode for that link
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                dts (str):  stringified datetime stamp
+            """
+            orb.log.info('* [rpc] vger.set_sys_mode_datum() ...')
+            userid = getattr(cb_details, 'caller_authid', '')
+            user = orb.select('Person', id=userid)
+            # get role assignments in project
+            project = orb.get(project_oid)
+            if not project:
+                return 'no such project'
+            pname = project.id
+            # link retrieved for debug logging -- this can be removed to
+            # improve performance after initial testing ...
+            link = orb.get(link_oid)
+            if ((not link) or
+                (link_oid not in mode_defz[project_oid]['systems'])):
+                return 'unknown system'
+            orb.log.info(f'        sys mode datum received for {pname}')
+            orb.log.info('============================================')
+            orb.log.info(f'system:  {link.name}')
+            orb.log.info(f'mode:    {mode}')
+            orb.log.info(f'value:   {value}')
+            orb.log.info('============================================')
+            ras = orb.search_exact(cname='RoleAssignment',
+                                   assigned_to=user,
+                                   role_assignment_context=project)
+            role_names = set([ra.assigned_role.name for ra in ras])
+            if ((set(['Administrator', 'Systems Engineer']) & role_names)
+                or is_global_admin(user)):
+                mode_defz[project_oid]['systems'][link_oid][mode] = value
+                md_dts = str(dtstamp())
+                state['mode_defz_dts'] = md_dts
+                msg = 'publishing "sys mode datum updated" ...'
+                orb.log.info(f'    {msg}')
+                channel = 'vger.channel.public'
+                self.publish(channel, {'sys mode datum updated':
+                                       (project_oid, link_oid, mode, value,
+                                        md_dts, userid)})
+                return md_dts
+            else:
+                return 'unauthorized'
+
+        yield self.register(set_sys_mode_datum, 'vger.set_sys_mode_datum',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def set_comp_mode_datum(project_oid=None, link_oid=None, comp_oid=None,
+                                mode=None, value=None, cb_details=None):
+            """
+            Set the mode value for the specified system link in the specified
+            project.
+
+            Keyword Args:
+                project_oid (str):  oid of the project
+                link_oid (str):  oid of the system link (acu or psu)
+                comp_oid (str):  oid of the component link (acu)
+                mode (str):  name of the mode
+                value (str):  value of the mode for that link
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                dts (str):  stringified datetime stamp
+            """
+            orb.log.info('* [rpc] vger.set_comp_mode_datum() ...')
+            userid = getattr(cb_details, 'caller_authid', '')
+            user = orb.select('Person', id=userid)
+            # get role assignments in project
+            project = orb.get(project_oid)
+            if not project:
+                return 'no such project'
+            pname = project.id
+            # link and comp retrieved for debug logging -- this can be removed
+            # to improve performance after initial testing ...
+            link = orb.get(link_oid)
+            comp = orb.get(comp_oid)
+            if ((not link) or (not comp) or
+                (link_oid not in mode_defz[project_oid]['components']) or
+                (comp_oid not in mode_defz[project_oid]['components'][link_oid])):
+                return 'unknown component'
+            orb.log.info(f'        comp mode datum received for {pname}')
+            orb.log.info('============================================')
+            orb.log.info(f'system:     {link.name}')
+            orb.log.info(f'component:  {comp.name}')
+            orb.log.info(f'mode:       {mode}')
+            orb.log.info(f'value:      {value}')
+            orb.log.info('============================================')
+            ras = orb.search_exact(cname='RoleAssignment',
+                                   assigned_to=user,
+                                   role_assignment_context=project)
+            role_names = set([ra.assigned_role.name for ra in ras])
+            if ((set(['Administrator', 'Systems Engineer']) & role_names)
+                or is_global_admin(user)):
+                mode_defz[project_oid]['components'][link_oid][comp_oid][
+                                                                mode] = value
+                md_dts = str(dtstamp())
+                state['mode_defz_dts'] = md_dts
+                msg = 'publishing "comp mode datum updated" ...'
+                orb.log.info(f'    {msg}')
+                channel = 'vger.channel.public'
+                self.publish(channel, {'comp mode datum updated':
+                                       (project_oid, link_oid, comp_oid, mode,
+                                        value, md_dts, userid)})
+                return md_dts
+            else:
+                return 'unauthorized'
+
+        yield self.register(set_comp_mode_datum, 'vger.set_comp_mode_datum',
+                            RegisterOptions(details_arg='cb_details'))
+
         def search_exact(**kw):
             """
             Search for instances of the specified class by exact match on a set
