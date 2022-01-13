@@ -1019,7 +1019,7 @@ class RepositoryService(ApplicationSession):
                                                  datetimes=True).items()}
             parm_data = {oid: parameterz.get(oid) for oid in public_oids}
             de_data = {oid: data_elementz.get(oid) for oid in public_oids}
-            md_data = json.dumps(mode_defz, sort_keys=False)
+            md_data = json.dumps(mode_defz)
             md_dts = state.get('mode_defz_dts') or ''
             # oids of newer objects on the server (or objects unknown to user)
             newer_oids = []
@@ -1542,7 +1542,7 @@ class RepositoryService(ApplicationSession):
                 msg = 'publishing "new mode defs" on public channel ...'
                 orb.log.info(f'    {msg}')
                 channel = 'vger.channel.public'
-                ser_mode_defs = json.dumps(mode_defz, sort_keys=False)
+                ser_mode_defs = json.dumps(mode_defz)
                 self.publish(channel, {'new mode defs':
                                        (md_dts, ser_mode_defs, userid)})
                 return md_dts
