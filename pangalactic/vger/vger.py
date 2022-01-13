@@ -1531,8 +1531,8 @@ class RepositoryService(ApplicationSession):
                                    assigned_to=user,
                                    role_assignment_context=project)
             role_names = set([ra.assigned_role.name for ra in ras])
-            if ((set(['Administrator', 'Systems Engineer']) & role_names)
-                or is_global_admin(user)):
+            if ((set(['Administrator', 'Systems Engineer', 'Lead Engineer'])
+                 & role_names) or is_global_admin(user)):
                 mode_data = yaml.safe_load(data)
                 if project_oid in mode_defz:
                     del mode_defz[project_oid]
@@ -1592,8 +1592,8 @@ class RepositoryService(ApplicationSession):
                                    assigned_to=user,
                                    role_assignment_context=project)
             role_names = set([ra.assigned_role.name for ra in ras])
-            if ((set(['Administrator', 'Systems Engineer']) & role_names)
-                or is_global_admin(user)):
+            if ((set(['Administrator', 'Systems Engineer', 'Lead Engineer'])
+                 & role_names) or is_global_admin(user)):
                 mode_defz[project_oid]['systems'][link_oid][mode] = value
                 md_dts = str(dtstamp())
                 state['mode_defz_dts'] = md_dts
