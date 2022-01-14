@@ -1579,9 +1579,10 @@ class RepositoryService(ApplicationSession):
             # link retrieved for debug logging -- this can be removed to
             # improve performance after initial testing ...
             link = orb.get(link_oid)
-            if ((not link) or
-                (link_oid not in mode_defz[project_oid]['systems'])):
-                return 'unknown system'
+            if not link:
+                return 'unknown link'
+            if link_oid not in mode_defz[project_oid]['systems']:
+                return 'link not in system section'
             orb.log.info(f'        sys mode datum received for {pname}')
             orb.log.info('============================================')
             orb.log.info(f'system:  {link.name}')
@@ -1639,10 +1640,14 @@ class RepositoryService(ApplicationSession):
             # to improve performance after initial testing ...
             link = orb.get(link_oid)
             comp = orb.get(comp_oid)
-            if ((not link) or (not comp) or
-                (link_oid not in mode_defz[project_oid]['components']) or
-                (comp_oid not in mode_defz[project_oid]['components'][link_oid])):
-                return 'unknown component'
+            if not link:
+                return 'unknown link'
+            if not comp:
+                return 'unknown comp'
+            if link_oid not in mode_defz[project_oid]['components']:
+                return 'link not in comp section'
+            if comp_oid not in mode_defz[project_oid]['components'][link_oid]:
+                return 'comp not in comp section'
             orb.log.info(f'        comp mode datum received for {pname}')
             orb.log.info('============================================')
             orb.log.info(f'system:     {link.name}')
