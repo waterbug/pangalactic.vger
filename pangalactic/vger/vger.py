@@ -1659,7 +1659,8 @@ class RepositoryService(ApplicationSession):
                                    assigned_to=user,
                                    role_assignment_context=project)
             role_names = set([ra.assigned_role.name for ra in ras])
-            if ((set(['Administrator', 'Systems Engineer']) & role_names)
+            if ((set(['Administrator', 'Systems Engineer', 'Lead Engineer'])
+                 & role_names)
                 or is_global_admin(user)):
                 mode_defz[project_oid]['components'][link_oid][comp_oid][
                                                                 mode] = value
