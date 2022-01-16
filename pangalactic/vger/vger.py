@@ -212,7 +212,7 @@ class RepositoryService(ApplicationSession):
         orb.log.info('* performing self-audit of deletions ...')
         supposed_to_be_deleted = list(set(deleted) & set(orb.get_oids()))
         if supposed_to_be_deleted:
-            orb.log.info('  deletions needed: {supposed_to_be_deleted}')
+            orb.log.info(f'  deletions needed: {supposed_to_be_deleted}')
             orb.delete(orb.get(oids=supposed_to_be_deleted))
         else:
             orb.log.info('  passed.')
@@ -1524,9 +1524,10 @@ class RepositoryService(ApplicationSession):
                 return 'no data submitted'
             pname = project.id
             orb.log.info(f'        mode defs data received for {pname}')
-            orb.log.info('============================================')
-            orb.log.info(f'{data}')
-            orb.log.info('============================================')
+            # extremely verbose debugging, uncomment only if necessary
+            # orb.log.info('============================================')
+            # orb.log.info(f'{data}')
+            # orb.log.info('============================================')
             ras = orb.search_exact(cname='RoleAssignment',
                                    assigned_to=user,
                                    role_assignment_context=project)
