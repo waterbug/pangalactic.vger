@@ -612,16 +612,17 @@ class RepositoryService(ApplicationSession):
                 mod_obj_dts[mod_obj.oid] = str(mod_obj.mod_datetime)
             for owner_id in mod_objs:
                 # content is now simply a list of serialized objects
-                content = mod_objs[owner_id]
+                obj_ids = [so.get('id') or "unknown"
+                           for so in mod_objs[owner_id]]
                 if owner_id == 'public':
                     channel = 'vger.channel.public'
-                    orb.log.info('   + public objects, publishing')
+                    orb.log.info(f'   + public objects, publishing {obj_ids}')
                     orb.log.info('     "modified" on public channel ...')
                 else:
                     channel = 'vger.channel.' + owner_id
-                    log_msg = 'cloaked: publishing "modified" on channel:'
-                    orb.log.info('   + {} {}'.format(log_msg, channel))
-                self.publish(channel, {'modified': content})
+                    orb.log.info(f'   + cloaked objects, publishing {obj_ids}')
+                    orb.log.info(f'     "modified" on "{channel}" channel.')
+                self.publish(channel, {'modified': mod_objs[owner_id]})
             for new_obj in output['new']:
                 # orb.log.info('   new object oid: {}'.format(new_obj.oid))
                 # orb.log.info('               id: {}'.format(new_obj.id))
