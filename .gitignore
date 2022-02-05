@@ -5,6 +5,7 @@ syntax: glob
 *.jpg
 *.pem
 *.pyc
+*.pyi
 *.pdf
 *.ps
 *.sgml
@@ -16,6 +17,7 @@ syntax: glob
 *.orig
 *.pprj
 .crossbar
+*.build
 build
 build.sh
 bump_version.sh
