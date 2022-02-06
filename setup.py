@@ -20,6 +20,10 @@ setup(
     maintainer_email='waterbug@pangalactic.us',
     license='TBD',
     packages=find_packages(),
+    entry_points={
+        'console_scripts': [
+            'vger = vger.bin']
+        },
     zip_safe=False
 )
 
