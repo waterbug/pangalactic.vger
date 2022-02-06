@@ -1,6 +1,7 @@
 """
 Setup script for pangalactic.vger, the Virtual Galactic Engineering Repository.
 """
+import os, sys
 from setuptools import setup, find_packages
 
 VERSION = open('VERSION').read()[:-1]
@@ -23,6 +24,7 @@ setup(
     zip_safe=False,
     data_files=[
         # nuitka-compiled executable
-        ('', 'vger.bin')]
+        (os.path.join(sys.prefix, 'bin'),
+         ['pangalactic/vger/vger.bin'])]
 )
 
