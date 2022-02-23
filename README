@@ -1,49 +1,39 @@
 # VGER NOTES
 
+## To compile vger.py:
+
+See the file BUILD.md in pangalactic/vger for instructions on compiling vger.py
+using nuitka.
+
 ## To run vger without a docker container:
 
-* add 'scred' system user
+* create a "home" directory for vger:
 
-  useradd -d /home/vger -mr scred
+  mkdir ~/vger_home
 
-* start a bash shell for scred
+* install postgresql:
 
-  /usr/bin/sudo -u scred bash
-  cd /home/vger
-
-In the /home/vger directory, using scred's shell, do the following:
-
-* get miniconda installer and install miniconda into /home/vger/m2
-
-  bash Miniconda2-latest-Linux-x86_64.sh
-
-* conda install postgresql
-
-  ./m2/bin/conda install postgresql
+  conda install postgresql
 
 * create directory for postgresql database:
 
-  ./m2/bin/pg_ctl init -D /home/vger/vgerdb
+  pg_ctl init -D ~/vger_home/vgerdb
 
 * start postgresql
 
-  /usr/bin/sudo -u scred pg_ctl -D /home/vger/vgerdb -l /home/vger/vgerdb_log start
+  pg_ctl -D ~/vger_home/vgerdb start
 
 * create database
 
-  /usr/bin/sudo -u scred createdb [-w] vgerdb
-
-  (use -w option for "no password")
+  createdb vgerdb
 
 * install pangalactic.vger
 
-  ./m2/bin/conda install [-c channel] pangalactic.vger
+  conda install pangalactic.vger
 
 * set appropriate configuration options
 
-  ...
-
 * start vger:
 
-  ...
+  python vger.py
 
