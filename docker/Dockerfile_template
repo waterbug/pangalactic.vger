@@ -34,6 +34,7 @@ RUN conda update conda \
  && conda install -c conda-forge python-ldap \
  && conda install -c conda-forge psycopg2 \
  && conda install -c conda-forge supervisor \
+ && conda install -c conda-forge nuitka \
  # install pangalactic.vger package from my conda repo
  && conda install -c https://pangalactic.us/conda_repo -c conda-forge pangalactic.vger \
  # install postgresql conda package
@@ -45,7 +46,9 @@ RUN conda update conda \
  && echo "port = 65432" >> /vgerdb/postgresql.conf \
  && echo "client_encoding = utf8" >> /vgerdb/postgresql.conf \
  && pg_ctl -D /vgerdb start \
- && createdb vgerdb
+ && createdb vgerdb \
+ # compile vger.py
+ && nuitka --static-libpython=no /home/scred/miniconda/lib/python3.9/site-packages/pangalactic/vger/vger.py
 
 # create the volume *AFTER* all the db commands have finished: any mods to the
 # volume after it is declared will be discarded!
