@@ -633,7 +633,7 @@ class RepositoryService(ApplicationSession):
                     # orb.log.info(f'   + new object oid: {new_obj.oid}')
                     # orb.log.info('     new object is cloaked -- ')
                     owner_id = ''
-                    if isinstance(new_obj, orb.classes['Product']):
+                    if isinstance(new_obj, orb.classes['ManagedObject']):
                         owner_id = getattr(new_obj.owner, 'id', None)
                     elif isinstance(new_obj,
                                     orb.classes['ProjectSystemUsage']):
@@ -654,9 +654,32 @@ class RepositoryService(ApplicationSession):
                         else:
                             new_objs[owner_id] = [authorized[new_obj.oid]]
                 else:
-                    # orb.log.info('   + new object is public --')
-                    # orb.log.info('     will publish on public channel ...')
+                    orb.log.info('   + new object is public --')
+                    orb.log.info('     publishing on public channel ...')
                     new_objs["public"].append(authorized[new_obj.oid])
+                    # NOTE: this stuff is probably unnecessary, now that the
+                    # "Relation" and "ParameterRelation" classes are modifiable
+                    # by anyone ... still testing that. [2022-03-02 SCW]
+                    # # Requirements are always "public" (not cloaked) --
+                    # # add related objects for performance requirements (in
+                    # # future, Requirement needs refactoring to avoid this)
+                    # # [1] find the related Relation object
+                    # # [2] find the Relation's ParameterRelation object
+                    # # [3] add them both to what is being published
+                    # if (isinstance(new_obj, orb.classes['Requirement'])
+                        # and (new_obj.req_type == 'performance')):
+                        # for o in output['new']:
+                            # if (isinstance(o, orb.classes['Relation'])
+                            # and (new_obj.computable_form.oid == o.oid)):
+                                # new_objs[owner_id].append(
+                                                    # authorized[o.oid])
+                            # for oo in output['new']:
+                                # if (isinstance(oo,
+                                     # orb.classes['ParameterRelation'])
+                                # and (oo.referenced_relation.oid == o.oid)):
+                                    # new_objs[owner_id].append(
+                                                    # authorized[oo.oid])
+
                 new_obj_dts[new_obj.oid] = str(new_obj.mod_datetime)
             # publish "decloaked" messages for new objects here ...
             for org_id in new_objs:
