@@ -26,7 +26,7 @@ from pangalactic.core                  import (config, deleted, state,
                                                read_deleted, write_deleted,
                                                write_state)
 from pangalactic.core.access           import (get_perms, is_cloaked,
-                                               is_global_admin)
+                                               is_global_admin, modifiables)
 from pangalactic.core.entity           import Entity
 from pangalactic.core.mapping          import schema_maps
 from pangalactic.core.parametrics      import (add_default_parameters,
@@ -520,7 +520,7 @@ class RepositoryService(ApplicationSession):
                     ownerless.append(sobj['oid'])
             for oid in ownerless:
                 del sobjs_unique[oid]
-            # new objects created by the user
+            # objects created by the user
             authorized = {oid:so for oid, so in sobjs_unique.items()
                           if so.get('creator') == user_oid}
             # existing objects for which the user has 'modify' permission
@@ -530,8 +530,11 @@ class RepositoryService(ApplicationSession):
                 if 'modify' in perms:
                     # orb.log.info('  auth (perms: {})'.format(str(perms)))
                     authorized[oid] = so
-                # else:
-                    # orb.log.info('  unauth (perms: {})'.format(str(perms)))
+            # instances of classes which anyone can modify
+            for oid, so in sobjs_unique.items():
+                if so['_cname'] in modifiables:
+                    authorized[oid] = so
+            # everything else is unauthorized
             unauthorized = {oid:so for oid, so in sobjs_unique.items()
                             if oid not in authorized}
             unauth_ids += [unauthorized[oid].get('id', 'no id')
