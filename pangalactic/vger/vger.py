@@ -793,7 +793,9 @@ class RepositoryService(ApplicationSession):
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                result (tuple of lists):  frozen oids, unauthorized oids
+                result (tuple of lists):  frozen obj attrs, unauthorized oids
+                    where frozen obj attrs is a tuple of
+                    (obj.oid, str(obj.mod_datetime), obj.modifier.oid)
             """
             orb.log.info('* vger.freeze({})'.format(str(oids)))
             if not oids:
@@ -802,7 +804,7 @@ class RepositoryService(ApplicationSession):
             # TODO:  check that user has permission to freeze
             userid = getattr(cb_details, 'caller_authid', None)
             user = orb.select('Person', id=userid)
-            unauth, frozens = [], []
+            unauth, frozens, frozen_oids = [], [], []
             dts = dtstamp()
             channel = 'vger.channel.public'
             for obj in orb.get(oids=oids):
@@ -811,19 +813,20 @@ class RepositoryService(ApplicationSession):
                     obj.frozen = True
                     obj.mod_datetime = dts
                     obj.modifier = user
-                    frozens.append(obj.oid)
-                    self.publish(channel, {'frozen': obj.oid})
+                    obj_attrs = (obj.oid, str(dts), user.oid)
+                    frozens.append(obj_attrs)
+                    frozen_oids.append(obj.oid)
                 else:
                     orb.log.info(f'  - freeze NOT authorized for {obj.oid}.')
                     unauth.append(obj.oid)
             orb.db.commit()
-            orb.log.info(f'  frozen: {str(frozens)}')
+            orb.log.info(f'  frozen: {str(frozen_oids)}')
             orb.log.info(f'  unauth: {str(unauth)}')
             if frozens:
                 msg = 'publishing "freeze completed" to public channel.'
                 orb.log.info(f'   {msg}')
                 channel = 'vger.channel.public'
-                self.publish(channel, {'freeze completed': frozens})
+                self.publish(channel, {'frozen': frozens})
             return frozens, unauth
 
         yield self.register(freeze, 'vger.freeze',
@@ -840,7 +843,9 @@ class RepositoryService(ApplicationSession):
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                result (tuple of lists):  thawed oids, unauthorized oids
+                result (tuple of lists):  thawed obj attrs, unauthorized oids
+                    where thawed obj attrs is a tuple of
+                    (obj.oid, str(obj.mod_datetime), obj.modifier.oid)
             """
             orb.log.info('* vger.thaw({})'.format(str(oids)))
             if not oids:
@@ -852,24 +857,25 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('  caller is not global admin; ignored.')
                 return ([], oids)
             objs = orb.get(oids=oids)
-            unauth, thawed = [], []
+            thawed, failed = [], []
             dts = dtstamp()
             for obj in objs:
                 try:
                     obj.frozen = False
                     obj.mod_datetime = dts
                     obj.modifier = user
-                    thawed.append(obj.oid)
+                    obj_attrs = (obj.oid, str(dts), user.oid)
+                    thawed.append(obj_attrs)
                 except:
-                    unauth.append(obj.oid)
+                    failed.append(obj.oid)
             orb.db.commit()
             orb.log.info(f'  thawed: {str(thawed)}')
-            orb.log.info(f'  unauth: {str(unauth)}')
+            orb.log.info(f'  failed: {str(failed)}')
             if thawed:
                 orb.log.info('   publishing "thawed" to public channel.')
                 channel = 'vger.channel.public'
                 self.publish(channel, {'thawed': thawed})
-            return (thawed, unauth)
+            return (thawed, failed)
 
         yield self.register(thaw, 'vger.thaw',
                             RegisterOptions(details_arg='cb_details'))
