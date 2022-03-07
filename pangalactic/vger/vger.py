@@ -823,7 +823,7 @@ class RepositoryService(ApplicationSession):
             orb.log.info(f'  frozen: {str(frozen_oids)}')
             orb.log.info(f'  unauth: {str(unauth)}')
             if frozens:
-                msg = 'publishing "freeze completed" to public channel.'
+                msg = 'publishing "frozen" to public channel.'
                 orb.log.info(f'   {msg}')
                 channel = 'vger.channel.public'
                 self.publish(channel, {'frozen': frozens})
