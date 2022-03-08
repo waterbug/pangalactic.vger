@@ -1249,6 +1249,12 @@ class RepositoryService(ApplicationSession):
                 unknown_oids = []
                 server_objs = orb.get_objects_for_project(project)
                 server_oids = [o.oid for o in server_objs]
+                # parameter and data element data for *ALL* project
+                # objects, regardless of mod_datetime
+                parm_data = {oid: parameterz.get(oid)
+                             for oid in server_oids}
+                de_data = {oid: data_elementz.get(oid)
+                           for oid in server_oids}
                 if data:
                     unknown_oids = list(set(data) - set(orb.get_oids()))
                     for oid in unknown_oids:
@@ -1265,12 +1271,6 @@ class RepositoryService(ApplicationSession):
                                  if o.mod_datetime == dts_by_oid.get(o.oid)]
                     older_oids = list(set(dts_by_oid.keys()) - set(same_oids)
                                       - set([o.oid for o in newer_objs]))
-                    # parameter and data element data for *ALL* project
-                    # objects, regardless of mod_datetime
-                    parm_data = {oid: parameterz.get(oid)
-                                 for oid in server_oids}
-                    de_data = {oid: data_elementz.get(oid)
-                               for oid in server_oids}
                 else:
                     newer_objs = server_objs
                 deleted_oids = list(deleted)
