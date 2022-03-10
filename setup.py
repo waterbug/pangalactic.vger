@@ -21,10 +21,6 @@ setup(
     maintainer_email='waterbug@pangalactic.us',
     license='TBD',
     packages=find_packages(),
-    zip_safe=False,
-    data_files=[
-        # nuitka-compiled executable
-        (os.path.join(sys.prefix, 'bin'),
-         ['pangalactic/vger/vger.bin'])]
+    zip_safe=False
 )
 
