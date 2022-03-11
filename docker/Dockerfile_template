@@ -48,7 +48,11 @@ RUN conda update conda \
  && pg_ctl -D /vgerdb start \
  && createdb vgerdb \
  # compile vger.py
- && nuitka --static-libpython=no /home/scred/miniconda/lib/python3.9/site-packages/pangalactic/vger/vger.py
+ && nuitka --static-libpython=no /home/scred/miniconda/lib/python3.9/site-packages/pangalactic/vger/vger.py \
+ # compile serializers.py
+ && nuitka --module --static-libpython=no /home/scred/miniconda/lib/python3.9/site-packages/pangalactic/core/serializers.py \
+ # compile uberorb.py
+ && nuitka --module --static-libpython=no /home/scred/miniconda/lib/python3.9/site-packages/pangalactic/core/uberorb.py
 
 # create the volume *AFTER* all the db commands have finished: any mods to the
 # volume after it is declared will be discarded!
