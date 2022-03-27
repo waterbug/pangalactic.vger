@@ -1018,10 +1018,10 @@ class RepositoryService(ApplicationSession):
                           they are either
                           [a] not created by the user or
                           [b] created by the user but are in 'deleted' cache.
-                    [2]:  parameter data for all oids in data known to the
+                    [2]:  parameter data for all "public" objects known to the
                           server
-                    [3]:  data element data for all oids in data known to the
-                          server
+                    [3]:  data element data for all "public" objects known to
+                          the server
                     [4]:  all mode definitions (serialized "mode_defz" cache)
                     [5]:  datetime stamp for mode definitions ("mode_defz_dts")
             """
