@@ -1931,7 +1931,8 @@ class RepositoryService(ApplicationSession):
             szd_ras = []
             user = orb.select('Person', id=userid)
             if user:
-                szd_user = serialize(orb, [user])
+                # set include_refdata=True in case user is "admin"
+                szd_user = serialize(orb, [user], include_refdata=True)
             else:
                 orb.log.info(f'  no Person object found for "{userid}".')
             # all Organizations *and* Projects

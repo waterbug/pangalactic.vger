@@ -18,11 +18,20 @@ Running the crossbar image with cryptosign auth over tls
   crossbar's "home" directory, renaming the file to 'principals.json' and
   editing it as appropriate to add the vger public key and an initial set of
   users with public keys, including at least an initial Global Administrator
-  so that more users can be added at runtime.
+  so that more users can be added at runtime (the "admin" user in the template
+  file suffices but you will want to generate a key pair specific to your
+  installation).
 * add a certificate file and a key file for the host machine into the
   '.crossbar' directory under crossbar's "home" directory, naming them
   'server_cert.pem' and 'server_key.pem', respectively, and setting the
   permissions on 'server_key.pem' to 400.
+* copy the file 'run_cb_crypto.sh.template' to 'run_cb_crypto.sh' (or however
+  you want to name it), editing as appropriate to mount the crossbar "home"
+  directory to "/node" (its mount point in the crossbar docker image) and to
+  map the port that you want to communicate over.
+* execute the crossbar startup file you just created
+* check the log ('docker logs [crossbar container name]') to make sure the
+  crossbar container started properly.
 
 Building and running the vger docker image
 ------------------------------------------
