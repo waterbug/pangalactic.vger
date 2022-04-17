@@ -13,31 +13,33 @@ Running the crossbar image with cryptosign auth over tls
   directory, renaming the file to 'config.json'
 * copy the file 'authenticator.py' from the pangalactic.vger
   repository into the crossbar "home" directory.
-* copy the file 'principals.json.template' from the pangalactic.vger repository
-  (pangalactic.vger/pangalactic/vger) into the '.crossbar' directory under
-  crossbar's "home" directory, renaming the file to 'principals.json' and
-  editing it as appropriate to add the vger public key and an initial set of
-  users with public keys, including at least an initial Global Administrator
-  so that more users can be added at runtime (the "admin" user in the template
-  file suffices but you will want to generate a key pair specific to your
-  installation).
+* copy the file 'principals.json' from the pangalactic.vger.test repository
+  (pangalactic.vger/pangalactic/vger/test) into the '.crossbar' directory under
+  crossbar's "home" directory and edit it as appropriate to add the vger public
+  key and an initial set of users with public keys, including at least an
+  initial Global Administrator so that more users can be added at runtime (the
+  "admin" user in the template file suffices but you will want to generate a
+  key pair specific to your installation).
 * add a certificate file and a key file for the host machine into the
   '.crossbar' directory under crossbar's "home" directory, naming them
   'server_cert.pem' and 'server_key.pem', respectively, and setting the
   permissions on 'server_key.pem' to 400.
-* copy the file 'run_cb_crypto.sh.template' to 'run_cb_crypto.sh' (or however
-  you want to name it), editing as appropriate to mount the crossbar "home"
-  directory to "/node" (its mount point in the crossbar docker image) and to
-  map the port that you want to communicate over.
-* execute the crossbar startup file you just created
+* copy the file 'run_cb_crypto.sh.template' from the pangalactic.vger
+  repository (pangalactic.vger/pangalactic/vger) to 'run_cb_crypto.sh' (or
+  however you want to name it), editing as appropriate to mount the crossbar
+  "home" directory to "/node" (its mount point in the crossbar docker image)
+  and to map the port that you want to communicate over.
+* execute the crossbar 'run' file you just created
 * check the log ('docker logs [crossbar container name]') to make sure the
   crossbar container started properly.
 
 Building and running the vger docker image
 ------------------------------------------
 
-NOTE:  it is ok to do the build inside the 'docker' directory of the
-pangalactic.vger git repository -- git will ignore 'build.sh', 'Dockerfile',
+Files referenced below are found in the pangalactic.vger/docker directory.
+
+NOTE:  it is ok to do the build inside the 'docker' directory of your
+pangalactic.vger git clone -- git will ignore 'build.sh', 'Dockerfile',
 'Miniconda3-latest-Linux-x86_64.sh', 'run_vger_detached.sh', and
 'run_vger_interactive.sh'
 
