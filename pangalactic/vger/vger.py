@@ -27,7 +27,6 @@ from pangalactic.core                  import (config, deleted, state,
                                                write_state)
 from pangalactic.core.access           import (get_perms, is_cloaked,
                                                is_global_admin, modifiables)
-from pangalactic.core.entity           import Entity
 from pangalactic.core.mapping          import schema_maps
 from pangalactic.core.parametrics      import (add_default_parameters,
                                                add_default_data_elements,
@@ -53,6 +52,7 @@ gsfc_mel_parms = ['m', 'P', 'R_D',
                   'R_D[CBE]', 'R_D[Ctgcy]', 'R_D[MEV]',
                   'Cost']
 gsfc_mel_des = ['Vendor', 'TRL']
+MINIMUM_CLIENT_VERSION = '2.3.dev0'
 
 
 class RepositoryService(ApplicationSession):
@@ -1306,70 +1306,6 @@ class RepositoryService(ApplicationSession):
         yield self.register(sync_project, 'vger.sync_project',
                             RegisterOptions(details_arg='cb_details'))
 
-        def data_new_row(proj_id=None, dm_oid=None, row_oid=None,
-                         cb_details=None):
-            """
-            Add a new row to a DataMatrix.
-
-            Keyword Args:
-                proj_id (str):  id of the project
-                dm_oid (str):  oid of the DataMatrix
-                row_oid (str):  oid of the new row
-                cb_details:  added by crossbar; not included in rpc signature
-
-            Return:
-                result (str):  'success'
-            """
-            orb.log.info('* [rpc] vger.data_new_row() ...')
-            orb.log.info('  project id: {}'.format(str(proj_id)))
-            orb.log.info('  dm oid: {}'.format(str(dm_oid)))
-            orb.log.info('  row_oid: {}'.format(str(row_oid)))
-            # TODO:  update local copy of datamatrix ...
-            # For now, just publish!
-            # publish item on project channel
-            channel = 'vger.channel.' + proj_id
-            txt = 'publishing new row oid on channel "{}" ...'
-            orb.log.info('  + {}'.format(txt.format(channel)))
-            self.publish(channel,
-                         {'data new row':
-                          [proj_id, dm_oid, row_oid]})
-            return 'success'
-
-        yield self.register(data_new_row, 'vger.data_new_row',
-                            RegisterOptions(details_arg='cb_details'))
-
-        def data_update_item(proj_id=None, dm_oid=None, row_oid=None,
-                             col_id=None, value=None, cb_details=None):
-            """
-            Update a DataMatrix item.
-
-            Keyword Args:
-                proj_id (str):  id of the project
-                cb_details:  added by crossbar; not included in rpc signature
-
-            Return:
-                result (str):  'success'
-            """
-            orb.log.info('* [rpc] vger.data_update_item() ...')
-            orb.log.info('  project id: {}'.format(str(proj_id)))
-            orb.log.info('  dm oid: {}'.format(str(dm_oid)))
-            orb.log.info('  row_oid: {}'.format(str(row_oid)))
-            orb.log.info('  col_id: {}'.format(str(col_id)))
-            orb.log.info('  value: {}'.format(str(value)))
-            # TODO:  update local copy of datamatrix ...
-            # For now, just publish!
-            # publish item on project channel
-            channel = 'vger.channel.' + proj_id
-            txt = 'publishing data item on channel "{}" ...'
-            orb.log.info('  + {}'.format(txt.format(channel)))
-            self.publish(channel,
-                         {'data item updated':
-                          [proj_id, dm_oid, row_oid, col_id, value]})
-            return 'success'
-
-        yield self.register(data_update_item, 'vger.data_update_item',
-                            RegisterOptions(details_arg='cb_details'))
-
         # NOTE: this rpc is currently unnecessary, since parameters are added
         # and/or set by object modifications, which are handled by vger.save()
         def set_parameter(oid=None, pid=None, value=None, cb_details=None):
@@ -1377,7 +1313,7 @@ class RepositoryService(ApplicationSession):
             Set a parameter value.
 
             Keyword Args:
-                oid (str):  oid of the parent object or entity
+                oid (str):  oid of the parent object
                 pid (str):  parameter id
                 value (str):  string representation of the value
                 cb_details:  added by crossbar; not included in rpc signature
@@ -1407,7 +1343,7 @@ class RepositoryService(ApplicationSession):
             Remove a parameter from an object.
 
             Keyword Args:
-                oid (str):  oid of the parent object or entity
+                oid (str):  oid of the parent object
                 pid (str):  parameter id
                 cb_details:  added by crossbar; not included in rpc signature
 
@@ -1435,7 +1371,7 @@ class RepositoryService(ApplicationSession):
             Set a data element value.
 
             Keyword Args:
-                oid (str):  oid of the parent object or entity
+                oid (str):  oid of the parent object
                 deid (str):  data element id
                 value (str):  string representation of the value
                 cb_details:  added by crossbar; not included in rpc signature
@@ -1465,7 +1401,7 @@ class RepositoryService(ApplicationSession):
             Remove a data element from an object.
 
             Keyword Args:
-                oid (str):  oid of the parent object or entity
+                oid (str):  oid of the parent object
                 deid (str):  data element id
                 cb_details:  added by crossbar; not included in rpc signature
 
@@ -1483,58 +1419,6 @@ class RepositoryService(ApplicationSession):
             return f'data element "{deid}" removed from object "{oid}".'
 
         yield self.register(del_de, 'vger.del_de',
-                            RegisterOptions(details_arg='cb_details'))
-
-        def save_entity(oid=None, creator=None, modifier=None,
-                          create_datetime=None, mod_datetime=None,
-                          owner=None, assembly_level=None, parent_oid=None,
-                          system_oid=None, system_name=None, cb_details=None):
-            """
-            Save a (new or modified) entity.
-
-            Keyword Args:
-                oid (str):  oid of the parent object or entity
-                creator (str):  oid of the entity's creator
-                modifier (str):  oid of the entity's modifier
-                create_datetime (str):  string representation of the created
-                    datetime
-                mod_datetime (str):  string representation of the modified
-                    datetime
-                owner (str):  oid of the owner Organization
-                assembly_level (int):  level of assembly (for a MEL entity)
-                parent_oid (str):  oid of the parent entity
-                system_oid (str):  oid of the system represented (for a MEL
-                    entity)
-                system_name (str):  name of the system represented (for a MEL
-                    entity)
-                cb_details:  added by crossbar; not included in rpc signature
-
-            Returns:
-                result (str):  'success'
-            """
-            argstr = f'oid={oid}, creator={creator}, modifier={modifier}, '
-            argstr += f'create_datetime={create_datetime}, '
-            argstr += f'mod_datetime={mod_datetime}, owner={owner}, '
-            argstr += f'assembly_level={assembly_level}, '
-            argstr += f'parent_oid={parent_oid}, system_oid={system_oid}, '
-            argstr += f'system_name={system_name}'
-            orb.log.info(f'* [rpc] save_entity({argstr})')
-            Entity(oid=oid, creator=creator, modifier=modifier,
-                   create_datetime=create_datetime, mod_datetime=mod_datetime,
-                   owner=owner, assembly_level=assembly_level,
-                   parent_oid=parent_oid, system_oid=system_oid,
-                   system_name=system_name)
-            # For now, just publish on public channel
-            channel = 'vger.channel.public'
-            orb.log.info(f'  + publishing entity on "{channel}" ...')
-            self.publish(channel,
-                         {'entity created':
-                          [oid, creator, modifier, create_datetime,
-                           mod_datetime, owner, assembly_level, parent_oid,
-                           system_oid, system_name]})
-            return 'success'
-
-        yield self.register(save_entity, 'vger.save_entity',
                             RegisterOptions(details_arg='cb_details'))
 
         def get_mode_defs():
@@ -1881,7 +1765,7 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_object, 'vger.get_mod_dts')
 
-        def get_user_roles(userid, data=None, cb_details=None):
+        def get_user_roles(userid, data=None, version=None, cb_details=None):
             """
             Get [0] the Person object that corresponds to the userid, [1] all
             Organization and Project objects, [2] all Person objects, and [3]
@@ -1895,15 +1779,21 @@ class RepositoryService(ApplicationSession):
                 data (dict):  dict {oid: str(mod_datetime)}
                     for the requestor's Person, Organization, Project, and
                     RoleAssignment objects
+                version (str):  caller version string -- if None, an exception
+                    will be raised
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                tuple of lists:  [0] serialized user (Person) object,
-                                 [1] serialized Organizations/Projects
-                                 [2] serialized Person objects
-                                 [3] serialized RoleAssignment objects
+                tuple:  [0] serialized user (Person) object,
+                        [1] serialized Organizations/Projects
+                        [2] serialized Person objects
+                        [3] serialized RoleAssignment objects
+                        [4] unknown oids in data
+                        [5] MINIMUM_CLIENT_VERSION (str)
             """
             orb.log.info('* [rpc] vger.get_user_roles({}) ...'.format(userid))
+            if version is None:
+                raise RuntimeError("client version is too old")
             data = data or {}
             same_dts = []
             unknown_oids = []
@@ -1950,7 +1840,8 @@ class RepositoryService(ApplicationSession):
             ras = [ra for ra in all_ras if ra.oid not in same_dts]
             if ras:
                 szd_ras = serialize(orb, ras)
-            return [szd_user, szd_orgs, szd_people, szd_ras, unknown_oids]
+            return [szd_user, szd_orgs, szd_people, szd_ras, unknown_oids,
+                    MINIMUM_CLIENT_VERSION]
 
         yield self.register(get_user_roles, 'vger.get_user_roles',
                             RegisterOptions(details_arg='cb_details'))
