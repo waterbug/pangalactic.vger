@@ -46,13 +46,16 @@ from pangalactic.core.utils.meta       import uncook_datetime
 from pangalactic.vger.userdir          import search_ldap_directory
 
 
-gsfc_mel_parms = ['m', 'P', 'R_D',
+test_mel_parms = ['m', 'P', 'R_D',
                   'm[CBE]', 'm[Ctgcy]', 'm[MEV]',
                   'P[CBE]', 'P[Ctgcy]', 'P[MEV]',
                   'R_D[CBE]', 'R_D[Ctgcy]', 'R_D[MEV]',
                   'Cost']
-gsfc_mel_des = ['Vendor', 'TRL']
-MINIMUM_CLIENT_VERSION = '2.3.dev0'
+test_mel_des = ['Vendor', 'TRL']
+
+# Default minimum client version is the current version, but this can be
+# modified for a particular release if appropriate
+MINIMUM_CLIENT_VERSION = __version__
 
 
 class RepositoryService(ApplicationSession):
@@ -98,8 +101,8 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('* loading H2G2 objects ...')
                 deserialize(orb, create_test_project())
                 hw = orb.search_exact(cname='HardwareProduct', id_ns='test')
-                orb.assign_test_parameters(hw, parms=gsfc_mel_parms,
-                                           des=gsfc_mel_des)
+                orb.assign_test_parameters(hw, parms=test_mel_parms,
+                                           des=test_mel_des)
                 state['test_project_loaded'] = True
         # create an "uploads" directory if there isn't one
         self.uploads_path = os.path.join(orb.home, 'vault', 'uploads')
