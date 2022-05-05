@@ -115,6 +115,8 @@ class RepositoryService(ApplicationSession):
             orb.log.info('* "extra_data" is present, checking ...')
             extra_data_fnames = os.listdir(extra_data_path)
             extra_data_fnames.sort()
+            # set flag for new HW (triggers check for deprecated data)
+            hw_added = False
             for fname in extra_data_fnames:
                 if fname.endswith('.yaml'):
                     orb.log.info(f'  - found "{fname}"')
@@ -136,6 +138,7 @@ class RepositoryService(ApplicationSession):
                                 HW = orb.classes['HardwareProduct']
                                 hw = [o for o in objs if isinstance(o, HW)]
                                 if hw:
+                                    hw_added = True
                                     msg = '- adding default parameters and '
                                     msg += 'data elements to HW products ... '
                                     orb.log.info(f'    {msg}')
@@ -157,6 +160,8 @@ class RepositoryService(ApplicationSession):
                             orb.log.info(traceback.format_exc())
                     already_loaded.append(fname)
                     state['extra_data_loaded'] = already_loaded
+            if hw_added:
+                orb.remove_deprecated_data()
         # =====================================================================
         # load "deleted" cache from file, if it exists, and check that the oids
         # referenced in that file do not exist in the db, or if so delete them.
