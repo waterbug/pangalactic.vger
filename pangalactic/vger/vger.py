@@ -30,19 +30,25 @@ from pangalactic.core.access           import (get_perms, is_cloaked,
 from pangalactic.core.mapping          import schema_maps
 from pangalactic.core.parametrics      import (add_default_parameters,
                                                add_default_data_elements,
+                                               componentz,
                                                data_elementz, parameterz,
+                                               de_defz,
                                                delete_parameter,
                                                delete_data_element,
                                                mode_defz,
+                                               parm_defz, parmz_by_dimz,
+                                               req_allocz,
+                                               serialize_compz,
+                                               serialize_req_allocz,
                                                set_dval, set_pval)
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
-                                               deserialize, serialize)
+                                               deserialize, serialize,
+                                               uncook_datetime)
 from pangalactic.core.refdata          import ref_oids
 from pangalactic.core.test.utils       import (create_test_users,
                                                create_test_project)
 from pangalactic.core.utils.datetimes  import dtstamp, earlier
 from pangalactic.core.uberorb          import orb
-from pangalactic.core.utils.meta       import uncook_datetime
 from pangalactic.vger.userdir          import search_ldap_directory
 
 
@@ -1093,8 +1099,6 @@ class RepositoryService(ApplicationSession):
                         del dts_by_oid[oid]
             if newer_oids:
                 newer_oc = orb.get_oid_cnames(oids=newer_oids)
-                # TODO:  don't recompute this every time!!  create a
-                # DESERIALIZATION_ORDER that includes all classes
                 all_ord = (DESERIALIZATION_ORDER +
                              list(set(newer_oc.values()) -
                                   set(DESERIALIZATION_ORDER)))
@@ -1755,6 +1759,41 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_objects, 'vger.get_objects',
                             RegisterOptions(details_arg='cb_details'))
+
+        def get_caches(oids=None):
+            """
+            Retrieves a 'componentz' data set for the objects with the
+            specified oids (or the full 'componentz' cache if no oids are
+            specified) along with the 'parm_defz', 'de_defz', 'parmz_by_dimz',
+            and 'req_allocz' caches.
+
+            Keyword Args:
+                oids (iterable of str):  iterable of object oids
+
+            Returns:
+                list:  A serialized 'componentz' data set plus the 'parm_defz',
+                    'de_defz', 'parmz_by_dimz', and 'req_allocz' caches.
+            """
+            orb.log.info('* [rpc] vger.get_caches() ...')
+            # "allocz" cache maps usage oids to oids of reqts allocated to them
+            allocz = {}
+            for req_oid, alloc in req_allocz.items():
+                # alloc[0] is the usage oid in an allocation (alloc) record
+                if alloc[0] in allocz:
+                    allocz[alloc[0]].append(req_oid)
+                else:
+                    allocz[alloc[0]] = [req_oid]
+            if oids:
+                return [serialize_compz({oid: componentz.get(oid) for oid in oids
+                                         if componentz.get(oid) is not None}),
+                        parm_defz, de_defz, parmz_by_dimz, 
+                        serialize_req_allocz(req_allocz), allocz]
+            # else get the full 'componentz' cache
+            return [serialize_compz(componentz),
+                    parm_defz, de_defz, parmz_by_dimz,
+                    serialize_req_allocz(req_allocz), allocz]
+
+        yield self.register(get_caches, 'vger.get_caches')
 
         def get_mod_dts(cnames=None, oids=None):
             """
