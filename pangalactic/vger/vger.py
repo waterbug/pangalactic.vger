@@ -16,6 +16,7 @@ from twisted.internet.ssl import CertificateOptions
 
 from OpenSSL import crypto
 
+from autobahn.twisted.component import Component, run
 from autobahn.twisted.wamp import ApplicationSession
 from autobahn.wamp         import cryptosign
 from autobahn.wamp.types   import RegisterOptions
@@ -30,7 +31,7 @@ from pangalactic.core.access           import (get_perms, is_cloaked,
 from pangalactic.core.mapping          import schema_maps
 from pangalactic.core.parametrics      import (add_default_parameters,
                                                add_default_data_elements,
-                                               componentz,
+                                               componentz, systemz,
                                                data_elementz, parameterz,
                                                de_defz,
                                                delete_parameter,
@@ -39,6 +40,7 @@ from pangalactic.core.parametrics      import (add_default_parameters,
                                                parm_defz, parmz_by_dimz,
                                                req_allocz,
                                                serialize_compz,
+                                               serialize_systemz,
                                                serialize_req_allocz,
                                                set_dval, set_pval)
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
@@ -85,20 +87,39 @@ class RepositoryService(ApplicationSession):
     def __init__(self, *args, **kw):
         """
         NOTE:  orb home directory and database connection url must be
-        specified.  The 'self.config.extra' dict is set from the 'extra'
-        keyword arg in ApplicationRunner.
+        specified.
         """
         super(RepositoryService, self).__init__(*args, **kw)
+        home = kw.get('home', '')
+        read_config(os.path.join(home, 'config'))
+        local_user = kw.get('local_user') or config.get('local_user', 'scred')
+        db_url = kw.get('db_url') or config.get('db_url',
+                        f'postgresql://{local_user}@localhost:5432/vgerdb')
+        debug = kw.get('debug') or config.get('debug', True)
+        console = kw.get('console') or config.get('console', True)
+        test = kw.get('test') or config.get('test', True)
+        ldap_url = kw.get('ldap_url') or config.get('ldap_url', '[not set]')
+        base_dn = kw.get('base_dn') or config.get('base_dn', '[not set]')
+        config['cb_host'] = cb_host
+        config['cb_port'] = cb_port
         # start the orb ...
-        orb.start(home=self.config.extra['home'], gui=False,
-                  db_url=self.config.extra['db_url'],
-                  debug=self.config.extra['debug'],
-                  console=self.config.extra['console'])
-        # always load test users steve, zaphod, buckaroo, etc.
+        orb.start(home=home, debug=debug, console=console, db_url=db_url)
+        orb.log.info("* vger starting with")
+        orb.log.info(f"    home directory:  '{home}'")
+        orb.log.info(f"    connecting to crossbar at:  '{cb_url}'")
+        orb.log.info(f"        realm:  '{realm}'")
+        orb.log.info("        server cert:  'server_cert.pem'")
+        orb.log.info(f"    db url: '{db_url}'")
+        orb.log.info(f"    ldap url: '{ldap_url}'")
+        orb.log.info(f"    base_dn: '{base_dn}'")
+        orb.log.info(f"    test: '{test}'")
+        orb.log.info(f"    debug: '{debug}'")
+        orb.log.info(f"    console: '{console}'")
         orb.log.info('* checking for test users ...')
+        # always load test users steve, zaphod, buckaroo, etc.
         deserialize(orb, create_test_users())
         orb.log.info('  test users loaded.')
-        if self.config.extra['test']:
+        if test:
             # check whether test objects have been loaded
             if state.get('test_project_loaded'):
                 orb.log.info('* H2G2 objects already loaded.')
@@ -207,9 +228,9 @@ class RepositoryService(ApplicationSession):
         dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
         atexit.register(self.shutdown)
         # load private key (raw format)
+        key_path = os.path.join(home, 'vger.key')
         try:
-            self._key = cryptosign.SigningKey.from_raw_key(
-                                                    self.config.extra['key'])
+            self._key = cryptosign.SigningKey.from_raw_key(key_path)
         except Exception as e:
             self.log.error("* could not load public key: {log_failure}",
                            log_failure=e)
@@ -274,7 +295,7 @@ class RepositoryService(ApplicationSession):
         }
         self.join(realm,
                   authmethods=['cryptosign'],
-                  authid=None,
+                  # authid=None,
                   authextra=extra)
 
     def onChallenge(self, challenge):
@@ -756,6 +777,7 @@ class RepositoryService(ApplicationSession):
                                 assigned_role=admin_role,
                                 role_assignment_context=None))
             if global_admin:
+                orb.log.info('  caller is a global admin')
                 auth_dels = objs_found
             else:
                 auth_dels = {}
@@ -781,6 +803,8 @@ class RepositoryService(ApplicationSession):
                         auth_dels[obj.oid] = obj
             # add oids of objects to be deleted to the 'deleted' cache
             if auth_dels:
+                auth = list(auth_dels)
+                orb.log.info(f'  authorized to delete: {auth}')
                 for oid, obj in auth_dels.items():
                     deleted[oid] = obj.id
                 write_deleted(os.path.join(orb.home, 'deleted'))
@@ -791,6 +815,7 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('   publishing "deleted" msg to public channel.')
                 channel = 'vger.channel.public'
                 self.publish(channel, {'deleted': oid})
+            orb.log.info(f'  deleted: {oids_deleted}')
             return (oids_not_found, oids_deleted)
 
         yield self.register(delete, 'vger.delete',
@@ -1762,17 +1787,18 @@ class RepositoryService(ApplicationSession):
 
         def get_caches(oids=None):
             """
-            Retrieves a 'componentz' data set for the objects with the
-            specified oids (or the full 'componentz' cache if no oids are
-            specified) along with the 'parm_defz', 'de_defz', 'parmz_by_dimz',
-            and 'req_allocz' caches.
+            Retrieves all related caches for the objects with the specified
+            oids (or the full caches if no oids are specified), which includes
+            the 'componentz', 'systemz', 'parm_defz', 'de_defz',
+            'parmz_by_dimz', and 'req_allocz' caches.
 
             Keyword Args:
                 oids (iterable of str):  iterable of object oids
 
             Returns:
-                list:  A serialized 'componentz' data set plus the 'parm_defz',
-                    'de_defz', 'parmz_by_dimz', and 'req_allocz' caches.
+                list:  Serialized 'componentz' and 'systemz' data sets plus the
+                    'parm_defz', 'de_defz', 'parmz_by_dimz', and 'req_allocz'
+                    caches.
             """
             orb.log.info('* [rpc] vger.get_caches() ...')
             # "allocz" cache maps usage oids to oids of reqts allocated to them
@@ -1786,10 +1812,12 @@ class RepositoryService(ApplicationSession):
             if oids:
                 return [serialize_compz({oid: componentz.get(oid) for oid in oids
                                          if componentz.get(oid) is not None}),
+                        serialize_systemz(systemz),
                         parm_defz, de_defz, parmz_by_dimz, 
                         serialize_req_allocz(req_allocz), allocz]
             # else get the full 'componentz' cache
             return [serialize_compz(componentz),
+                    serialize_systemz(systemz),
                     parm_defz, de_defz, parmz_by_dimz,
                     serialize_req_allocz(req_allocz), allocz]
 
@@ -2051,9 +2079,10 @@ class RepositoryService(ApplicationSession):
                     orb.save([person], recompute=False)
                     saved_objs.append(person)
                 if public_key:
-                    default_db_path = os.path.join(orb.home, 'crossbar',
-                                                   'principals.db')
-                    auth_db_path = config.get('auth_db_path', default_db_path)
+                    default_auth_db_path = os.path.join(orb.home, 'crossbar',
+                                                        'principals.db')
+                    auth_db_path = config.get('auth_db_path',
+                                                        default_auth_db_path)
                     if os.path.exists(auth_db_path):
                         try:
                             # add pk to principals db
@@ -2141,17 +2170,11 @@ class RepositoryService(ApplicationSession):
 
 
 if __name__ == '__main__':
-
     home_help = 'home directory (used by orb) [default: current directory]'
-    config_help = 'initial config file name [default: "config"]'
     cert_help = 'crossbar host cert file name [default: "server_cert.pem"].'
     parser = argparse.ArgumentParser()
-    parser.add_argument('--authid', dest='authid', type=str,
-                        help='id to connect as (required)')
     parser.add_argument('--home', dest='home', type=str,
                         help=home_help)
-    parser.add_argument('--config', dest='config', type=str,
-                        default='config', help=config_help)
     parser.add_argument('--db_url', dest='db_url', type=str,
                         help='db connection url (used by orb)')
     parser.add_argument('--cb_host', dest='cb_host', type=str,
@@ -2167,65 +2190,27 @@ if __name__ == '__main__':
     parser.add_argument('--console', dest='console', action='store_true',
                         help='Sends log output to stdout')
     options = parser.parse_args()
-
-    from autobahn.twisted.wamp import ApplicationRunner
-    # from autobahn.twisted.component import Component, run
-
     # command options override config settings; if neither, defaults are used
     home = options.home or ''
-    if os.path.exists(options.config):
-        read_config(options.config)
-    else:
-        read_config(os.path.join(home, 'config'))
-    # NOTE: do not need to submit authid when using cryptosign auth; crossbar
-    # will look up the authid associated with our public key ...
-    # authid = options.authid or config.get('authid')
-    # unix domain socket connection to db:  socket located in home dir
-    domain_socket = os.path.join(home, 'vgerdb_socket')
+    config['test'] = options.test or config.get('test', True)
+    config['debug'] = options.debug or config.get('debug', True)
+    config['console'] = options.console or config.get('console', False)
     db_url = options.db_url or config.get('db_url',
-             'postgresql://scred@:5432/vgerdb?host={}'.format(domain_socket))
-    private_key = os.path.join(home, 'vger.key')
-    test = options.test or config.get('test', False)
-    debug = options.debug or config.get('debug', False)
-    console = options.console or config.get('console', False)
-    extra = {
-        'authid': None,
-        'home': home,
-        'db_url': db_url,
-        'key': private_key,
-        'console': console,
-        'debug': debug,
-        'test': test
-        }
+                    f'postgresql://scred@localhost:5432/vgerdb')
+    config['db_url'] = db_url
     cb_host = options.cb_host or config.get('cb_host', 'localhost')
     cb_port = options.cb_port or config.get('cb_port', 8080)
-    cb_url = 'wss://{}:{}/ws'.format(cb_host, cb_port)
-    # router can auto-choose the realm, so not necessary to specify
-    realm = 'pangalactic-services'
-    # config['authid'] = None
-    config['db_url'] = db_url
-    config['debug'] = debug
-    config['console'] = console
-    config['test'] = test
+    cb_url = f'wss://{cb_host}:{cb_port}/ws'
     config['cb_host'] = cb_host
     config['cb_port'] = cb_port
+    config['cb_url'] = cb_url
+    # router can auto-choose the realm, so unnecessary to specify but ...
+    realm = 'pangalactic-services'
     # write the new config file
     write_config(os.path.join(home, 'config'))
-    print("vger starting with")
-    print("   home directory:  '{}'".format(home))
-    print("   connecting to crossbar at:  '{}'".format(cb_url))
-    print("       realm:  '{}'".format(realm))
-    print("       server cert:  '{}'".format(options.cert))
-    # print("       authid: '{}'".format(authid))
-    print("   db url: '{}'".format(options.db_url))
-    print("   ldap url: '{}'".format(config.get('ldap_url', '[not set]')))
-    print("   base_dn: '{}'".format(config.get('base_dn', '[not set]')))
-    print("   test: '{}'".format(str(test)))
-    print("   debug: '{}'".format(str(debug)))
-    print("   console: '{}'".format(str(console)))
     # load crossbar host certificate (default: file 'server_cert.pem' in
     # home directory)
-    cert_fname = options.cert or 'server_cert.pem'
+    cert_fname = 'server_cert.pem'
     cert_fpath = os.path.join(home, cert_fname)
     cert_content = crypto.load_certificate(crypto.FILETYPE_PEM,
                                            str(open(cert_fpath, 'r').read()))
@@ -2235,23 +2220,17 @@ if __name__ == '__main__':
     except:
         print("Could not get tls_options from server cert -- exiting.")
         sys.exit()
-    # comp = Component(session_factory=RepositoryService,
-                     # transports=[{
-                        # "type": "websocket",
-                        # "url": cb_url,
-                        # "endpoint": {
-                            # "type": "tcp",
-                            # "host": cb_host,
-                            # "port": cb_port,
-                            # "tls":  tls_options},
-                        # "serializers": ["json"]
-                            # }],
-                     # realm=realm,
-                     # extra=extra)
-    # run([comp])
-
-    print("Connecting to {}: realm={}".format(cb_url, realm))
-    runner = ApplicationRunner(url=cb_url, realm=realm, extra=extra,
-                               ssl=tls_options)
-    runner.run(RepositoryService)
+    comp = Component(session_factory=RepositoryService,
+                     transports=[{
+                        "type": "websocket",
+                        "url": cb_url,
+                        "endpoint": {
+                            "type": "tcp",
+                            "host": cb_host,
+                            "port": cb_port,
+                            "tls":  tls_options},
+                        "serializers": ["json"]
+                            }],
+                     realm=realm)
+    run([comp])
 
