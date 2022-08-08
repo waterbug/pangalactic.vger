@@ -137,6 +137,9 @@ class RepositoryService(ApplicationSession):
             os.makedirs(self.uploads_path)
         # load data from "extra_data" dir
         extra_data_path = os.path.join(orb.home, 'extra_data')
+        if not os.path.exists(extra_data_path):
+            # if 'extra_data' dir is not found, check current directory for it
+            extra_data_path = 'extra_data'
         already_loaded = state.get('extra_data_loaded') or []
         if os.path.exists(extra_data_path) and os.listdir(extra_data_path):
             orb.log.info('* "extra_data" is present, checking ...')
@@ -189,6 +192,11 @@ class RepositoryService(ApplicationSession):
                     state['extra_data_loaded'] = already_loaded
             if hw_added:
                 orb.remove_deprecated_data()
+        else:
+            if not os.path.exists(extra_data_path):
+                orb.log.info('* "extra_data" dir not found.')
+            elif not os.listdir(extra_data_path):
+                orb.log.info('* "extra_data" dir was empty.')
         # =====================================================================
         # load "deleted" cache from file, if it exists, and check that the oids
         # referenced in that file do not exist in the db, or if so delete them.
@@ -2195,8 +2203,9 @@ if __name__ == '__main__':
     config['test'] = options.test or config.get('test', True)
     config['debug'] = options.debug or config.get('debug', True)
     config['console'] = options.console or config.get('console', False)
+    # TODO:  take "local_user" option with default "scred"; use in db_url
     db_url = options.db_url or config.get('db_url',
-                    f'postgresql://scred@localhost:5432/vgerdb')
+                    'postgresql://scred@localhost:5432/vgerdb')
     config['db_url'] = db_url
     cb_host = options.cb_host or config.get('cb_host', 'localhost')
     cb_port = options.cb_port or config.get('cb_port', 8080)
