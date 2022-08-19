@@ -238,7 +238,7 @@ class RepositoryService(ApplicationSession):
         # load private key (raw format)
         key_path = os.path.join(home, 'vger.key')
         try:
-            self._key = cryptosign.SigningKey.from_raw_key(key_path)
+            self._key = cryptosign.CryptosignKey.from_file(key_path)
         except Exception as e:
             self.log.error("* could not load public key: {log_failure}",
                            log_failure=e)
@@ -309,7 +309,7 @@ class RepositoryService(ApplicationSession):
     def onChallenge(self, challenge):
         self.log.info("* authentication challenge received ...")
         # sign the challenge with our private key.
-        signed_challenge = self._key.sign_challenge(self, challenge)
+        signed_challenge = self._key.sign_challenge(challenge)
         # send back the signed challenge for verification
         return signed_challenge
 
