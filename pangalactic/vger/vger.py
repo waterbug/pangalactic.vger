@@ -90,7 +90,7 @@ class RepositoryService(ApplicationSession):
         specified.
         """
         super(RepositoryService, self).__init__(*args, **kw)
-        home = kw.get('home', '')
+        home = kw.get('home', config.get('home')) or ''
         read_config(os.path.join(home, 'config'))
         local_user = kw.get('local_user') or config.get('local_user', 'scred')
         db_url = kw.get('db_url') or config.get('db_url',
@@ -2200,6 +2200,7 @@ if __name__ == '__main__':
     options = parser.parse_args()
     # command options override config settings; if neither, defaults are used
     home = options.home or ''
+    config['home'] = home
     config['test'] = options.test or config.get('test', True)
     config['debug'] = options.debug or config.get('debug', True)
     config['console'] = options.console or config.get('console', False)
