@@ -281,7 +281,6 @@ class RepositoryService(ApplicationSession):
 
     def onConnect(self):
         self.log.info("* RepositoryService connected ...")
-        state['connected'] = True
         # self.config is set up by the session
         realm = self.config.realm
         self.log.info("* realm set to: '%s'" % str(realm))
