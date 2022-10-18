@@ -1830,6 +1830,25 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_caches, 'vger.get_caches')
 
+        def get_parmz(oids=None):
+            """
+            Retrieves all cached parameter values for the specified oids, or
+            if None, for all the oids in the db.
+
+            Keyword Args:
+                oids (iterable of str):  iterable of object oids
+
+            Returns:
+                dict:  parameterz data.
+            """
+            orb.log.info('* [rpc] vger.get_parmz() ...')
+            if oids:
+                return {oid: parameterz.get(oid) for oid in oids}
+            else:
+                return {oid: parameterz.get(oid) for oid in orb.get_oids()}
+
+        yield self.register(get_parmz, 'vger.get_parmz')
+
         def get_mod_dts(cnames=None, oids=None):
             """
             Retrieves the 'mod_datetime' for the objects with the specified
