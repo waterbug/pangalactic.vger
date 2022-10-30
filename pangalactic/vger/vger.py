@@ -374,10 +374,6 @@ class RepositoryService(ApplicationSession):
             user_obj = orb.select('Person', id=userid)
             org_oid = ser_ra.get('role_assignment_context')
             admin_role = orb.get('pgefobjects:Role.Administrator')
-            global_admin = orb.select('RoleAssignment',
-                                  assigned_role=admin_role,
-                                  assigned_to=user_obj,
-                                  role_assignment_context=None)
             if org_oid:
                 # is user an Administrator for this org or a global Admin?
                 org = orb.get(org_oid)
@@ -385,7 +381,7 @@ class RepositoryService(ApplicationSession):
                                       assigned_role=admin_role,
                                       assigned_to=user_obj,
                                       role_assignment_context=org)
-                if admin_ra or global_admin:
+                if admin_ra or is_global_admin(user_obj):
                     orb.log.info('  role assignment is authorized, saving ...')
                     output = deserialize(orb, [ser_ra], dictify=True)
                     mod_ra_dts = {}
@@ -422,7 +418,7 @@ class RepositoryService(ApplicationSession):
             else:
                 # the ra is Global Admin, can only be assigned by another
                 # Global Admin ...
-                if global_admin:
+                if is_global_admin(user_obj):
                     orb.log.info('  global admin assignment is authorized ...')
                     output = deserialize(orb, [ser_ra], dictify=True)
                     mod_ra_dts = {}
@@ -780,10 +776,7 @@ class RepositoryService(ApplicationSession):
             # attribute only be deleted by a Global Admin -> only instances of
             # subclasses of 'Modelable' can be deleted by ordinary users.
             admin_role = orb.get('pgefobjects:Role.Administrator')
-            global_admin = bool(orb.select('RoleAssignment', assigned_to=user,
-                                assigned_role=admin_role,
-                                role_assignment_context=None))
-            if global_admin:
+            if is_global_admin(user):
                 orb.log.info('  caller is a global admin')
                 auth_dels = objs_found
             else:
@@ -1870,7 +1863,9 @@ class RepositoryService(ApplicationSession):
             """
             Get [0] the Person object that corresponds to the userid, [1] all
             Organization and Project objects, [2] all Person objects, and [3]
-            all RoleAssignment objects.
+            either RoleAssignment objects for the specified user or all
+            RoleAssignment objects that correspond to the user's Administrator
+            role assignments.
 
             Args:
                 userid (str):  userid of a person (Person.id)
@@ -1936,9 +1931,27 @@ class RepositoryService(ApplicationSession):
             people = [p for p in all_people if p.oid not in same_dts]
             if people:
                 szd_people = serialize(orb, people)
-            # all RoleAssignment objects
-            all_ras = orb.get_by_type('RoleAssignment')
-            ras = [ra for ra in all_ras if ra.oid not in same_dts]
+            # RoleAssignment objects
+            # (1) always return the user's direct role assignments
+            ras = set(orb.select('RoleAssignment', assigned_to=user))
+            all_ras = set([ra for ra in orb.get_by_type('RoleAssignment')
+                           if ra.oid not in same_dts])
+            # (2) if a global admin, return ALL role assignments
+            if is_global_admin(user):
+                ras = all_ras
+            else:
+                # (3) if a project admin, return all role assignments for the
+                #     orgs of which they are an admin
+                admin_role = orb.get('pgefobjects:Role.Administrator')
+                admin_ras = orb.select('RoleAssignment',
+                                       assigned_role=admin_role,
+                                       assigned_to=user)
+                orgs = []
+                if admin_ras:
+                    orgs = [ra.role_assignment_context for ra in admin_ras]
+                    if orgs:
+                        ras |= set([ra for ra in all_ras
+                                    if ra.role_assignment_context in orgs])
             if ras:
                 szd_ras = serialize(orb, ras)
             return [szd_user, szd_orgs, szd_people, szd_ras, unknown_oids,
@@ -2021,11 +2034,7 @@ class RepositoryService(ApplicationSession):
             userid = getattr(cb_details, 'caller_authid', '')
             user = orb.select('Person', id=userid)
             # check that the caller is a Global Admin
-            admin_role = orb.get('pgefobjects:Role.Administrator')
-            global_admin = bool(orb.select('RoleAssignment', assigned_to=user,
-                                assigned_role=admin_role,
-                                role_assignment_context=None))
-            if global_admin and data:
+            if is_global_admin(user) and data:
                 msg = 'called with data: {}'.format(str(data))
                 orb.log.info('    {}'.format(msg))
                 # check if person is already in db ...
@@ -2141,7 +2150,7 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('  returning result: {}'.format(str(res)))
                 return res
             else:
-                if not global_admin:
+                if not is_global_admin(user):
                     orb.log.info('  not global admin -- unauthorized!')
                 elif not data:
                     orb.log.info('  no data provided!')
