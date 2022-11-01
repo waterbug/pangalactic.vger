@@ -1068,16 +1068,7 @@ class RepositoryService(ApplicationSession):
             data = data or {}
             n = len(data)
             orb.log.info(f'  received {n} item(s) in data')
-
-            # TODO: user object will be needed when more than "public" objects
-            # are to be returned -- e.g., organizational product libraries to
-            # which the user has access by having a role in the organization
-            # user = None
-            # userid = getattr(cb_details, 'caller_authid', '')
-            # if userid:
-                # user = orb.select('Person', id=userid)
             result = [[], [], {}, {}, '', '']
-
             # if any oids appear in "deleted" cache, publish a "deleted" msg
             for oid in deleted:
                 if oid in data:
