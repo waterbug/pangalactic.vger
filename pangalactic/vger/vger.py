@@ -1933,7 +1933,8 @@ class RepositoryService(ApplicationSession):
                 szd_people = serialize(orb, people)
             # RoleAssignment objects
             # (1) always return the user's direct role assignments
-            ras = set(orb.select('RoleAssignment', assigned_to=user))
+            ras = set(orb.search_exact(cname='RoleAssignment',
+                                       assigned_to=user))
             all_ras = set([ra for ra in orb.get_by_type('RoleAssignment')
                            if ra.oid not in same_dts])
             # (2) if a global admin, return ALL role assignments
