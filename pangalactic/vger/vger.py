@@ -280,7 +280,7 @@ class RepositoryService(ApplicationSession):
         orb.dump_all()
 
     def onConnect(self):
-        self.log.info("* RepositoryService connected ...")
+        self.log.info("* connected to crossbar ...")
         # self.config is set up by the session
         realm = self.config.realm
         self.log.info("* realm set to: '%s'" % str(realm))
