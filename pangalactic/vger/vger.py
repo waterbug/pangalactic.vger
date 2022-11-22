@@ -91,7 +91,6 @@ class RepositoryService(ApplicationSession):
         """
         super(RepositoryService, self).__init__(*args, **kw)
         home = kw.get('home', config.get('home')) or ''
-        read_config(os.path.join(home, 'config'))
         local_user = kw.get('local_user') or config.get('local_user', 'scred')
         db_url = kw.get('db_url') or config.get('db_url',
                         f'postgresql://{local_user}@localhost:5432/vgerdb')
@@ -2219,6 +2218,7 @@ if __name__ == '__main__':
     options = parser.parse_args()
     # command options override config settings; if neither, defaults are used
     home = options.home or ''
+    read_config(os.path.join(home, 'config'))
     config['home'] = home
     config['test'] = options.test or config.get('test', True)
     config['debug'] = options.debug or config.get('debug', True)

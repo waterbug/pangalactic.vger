@@ -57,8 +57,8 @@ pangalactic.vger git clone -- git will ignore 'build.sh', 'Dockerfile',
   - copy 'config_template' into the vger "home" directory, renaming it to
     'config' and adjusting its contents as necessary.  (N.B.: "console: true"
     will redirect output to stdout and will *not* write to the logs, so it
-    should only be use when the container is run interactively for testing, and
-    should not be used in production.)
+    should only be used when the container is run interactively for testing,
+    and should not be used in production.)
   - give group "crossbar" read/write access to the 'config' file.
   - add the vger private key file as 'vger.key' (this must correspond to the
     public key for the 'vger' user in crossbar's "principals" database).
