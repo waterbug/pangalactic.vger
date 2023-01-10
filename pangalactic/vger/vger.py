@@ -1390,34 +1390,39 @@ class RepositoryService(ApplicationSession):
         yield self.register(del_parm, 'vger.del_parm',
                             RegisterOptions(details_arg='cb_details'))
 
-        # NOTE: this rpc is currently unnecessary, since data elements are
-        # added and/or set by object modifications, which are handled by
-        # vger.save()
-        def set_data_element(oid=None, deid=None, value=None, cb_details=None):
+        def set_data_elements(des=None, cb_details=None):
             """
-            Set a data element value.
+            Set data element values.
 
             Keyword Args:
-                oid (str):  oid of the parent object
-                deid (str):  data element id
-                value (str):  string representation of the value
+                des (dict):  dict of data elements to update, in the format of
+                    the data_elementz cache dict
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
                 result (str):  'success'
             """
-            # argstr = f'oid={oid}, deid={deid}, value={value}'
-            # orb.log.info(f'* [rpc] set_data_element({argstr})')
-            # For now, just publish on public channel
-            set_dval(oid, deid, value)
-            channel = 'vger.channel.public'
-            # orb.log.info(f'  + publishing data element on "{channel}" ...')
-            self.publish(channel,
-                         {'data element set':
-                          [oid, deid, value]})
-            return 'success'
+            if not des or not isinstance(des, dict):
+                return 'failure'
+            userid = getattr(cb_details, 'caller_authid', 'unknown')
+            user_obj = orb.select('Person', id=userid)
+            try:
+                for oid, dedict in des.items():
+                    obj = orb.get(oid)
+                    perms = get_perms(obj, user_obj)
+                    if "modify" in perms:
+                        for deid, value in dedict.items():
+                            set_dval(oid, deid, value)
+                channel = 'vger.channel.public'
+                # publish on public channel
+                # orb.log.info('  + publishing data elements to "public" ...')
+                self.publish(channel,
+                             {'data elements set': des})
+                return 'success'
+            except:
+                return 'failure'
 
-        yield self.register(set_data_element, 'vger.set_data_element',
+        yield self.register(set_data_elements, 'vger.set_data_elements',
                             RegisterOptions(details_arg='cb_details'))
 
         # NOTE: this rpc is necessary because the serialization format allows
@@ -1884,7 +1889,7 @@ class RepositoryService(ApplicationSession):
             same_dts = []
             unknown_oids = []
             userid = getattr(cb_details, 'caller_authid', '')
-            orb.log.info(f'  userid: "{userid}" ...')
+            orb.log.info(f'  login: userid "{userid}" ...')
             if data:
                 server_dts = orb.get_mod_dts(oids=list(data))
                 for oid in data:
