@@ -1027,7 +1027,13 @@ class RepositoryService(ApplicationSession):
 
         def sync_library_objects(data, cb_details=None):
             """
-            Sync all "public" instances of ManagedObject*.
+            Sync all "public" instances of classes for which libraries are
+            used -- these include HardwareProduct, Template,
+            DataElementDefinition, and Model.  (ParameterDefinitions are
+            considered "reference data" and are not created by users at runtime
+            because of the need for standardization, even though they do have
+            associated libraries.)
+
             (NOTE: `sync_objects()` should be called first with the user's
             local objects, so that any objects the user created since their
             last login will be added to the server.)
@@ -1091,15 +1097,24 @@ class RepositoryService(ApplicationSession):
             # have access ...
             # initially, just public objects (`ManagedObject` subtypes)
             server_dts = {}
-            all_public_oids = [o.oid for o in orb.search_exact(public=True)]
+            all_public_oids = set([o.oid for o in
+                                   orb.search_exact(public=True)])
+            # include only HW, Templates, DEDs, and Models
+            hw_oids = set(orb.get_oids(cname='HardwareProduct'))
+            template_oids = set(orb.get_oids(cname='Template'))
+            ded_oids = set(orb.get_oids(cname='DataElementDefinition'))
+            model_oids = set(orb.get_oids(cname='Model'))
+            all_lib_oids = hw_oids | ded_oids | template_oids | model_oids
             # exclude reference data
-            public_oids = list(set(all_public_oids) - set(ref_oids))
-            if public_oids:
+            public_lib_oids = list((all_lib_oids & all_public_oids)
+                                    - set(ref_oids))
+            # public_oids = list(set(public_lib_oids) - set(ref_oids))
+            if public_lib_oids:
                 server_dts = {oid: dts for oid, dts
-                              in orb.get_mod_dts(oids=public_oids,
+                              in orb.get_mod_dts(oids=public_lib_oids,
                                                  datetimes=True).items()}
-            parm_data = {oid: parameterz.get(oid) for oid in public_oids}
-            de_data = {oid: data_elementz.get(oid) for oid in public_oids}
+            parm_data = {oid: parameterz.get(oid) for oid in public_lib_oids}
+            de_data = {oid: data_elementz.get(oid) for oid in public_lib_oids}
             md_data = json.dumps(mode_defz)
             md_dts = state.get('mode_defz_dts') or ''
             # oids of newer objects on the server (or objects unknown to user)
