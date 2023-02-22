@@ -1027,8 +1027,8 @@ class RepositoryService(ApplicationSession):
 
         def sync_library_objects(data, cb_details=None):
             """
-            Sync all "public" instances of classes for which libraries are
-            used -- these include HardwareProduct, Template,
+            Sync all non-project-owned instances of classes for which libraries
+            are used -- these include HardwareProduct, Template,
             DataElementDefinition, and Model.  (ParameterDefinitions are
             considered "reference data" and are not created by users at runtime
             because of the need for standardization, even though they do have
@@ -1099,11 +1099,20 @@ class RepositoryService(ApplicationSession):
             server_dts = {}
             all_public_oids = set([o.oid for o in
                                    orb.search_exact(public=True)])
-            # include only HW, Templates, DEDs, and Models
-            hw_oids = set(orb.get_oids(cname='HardwareProduct'))
-            template_oids = set(orb.get_oids(cname='Template'))
+            # include only HW, Templates, DEDs, and Models that are not owned
+            # by projects
+            projects = orb.get_by_type('Project')
+            hw = orb.get_by_type('HardwareProduct')
+            non_proj_hw = [o for o in hw if o.owner not in projects]
+            hw_oids = set([o.oid for o in non_proj_hw])
+            templates = orb.get_by_type('Template')
+            non_proj_templates = [o for o in templates
+                                  if o.owner not in projects]
+            template_oids = set([o.oid for o in non_proj_templates])
             ded_oids = set(orb.get_oids(cname='DataElementDefinition'))
-            model_oids = set(orb.get_oids(cname='Model'))
+            models = orb.get_by_type('Model')
+            non_proj_models = [o for o in models if o.owner not in projects]
+            model_oids = set([o.oid for o in non_proj_models])
             all_lib_oids = hw_oids | ded_oids | template_oids | model_oids
             # exclude reference data
             public_lib_oids = list((all_lib_oids & all_public_oids)
