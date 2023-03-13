@@ -1286,6 +1286,15 @@ class RepositoryService(ApplicationSession):
             if not ras and not is_global_admin(user):
                 orb.log.info('   no project role nor GA -- not authorized.')
                 return result
+            admin_oid = 'pgefobjects:Role.Administrator'
+            proj_admin = [ra for ra in ras
+                          if ra.assigned_role.oid == admin_oid]
+            project_ras = []
+            if proj_admin or is_global_admin(user):
+                # if user is a project admin or global admin, get all users'
+                # role assignments on this project
+                project_ras = orb.search_exact(cname='RoleAssignment',
+                                               role_assignment_context=project)
             if project:
                 data = data or {}
                 n = len(data)
@@ -1299,6 +1308,8 @@ class RepositoryService(ApplicationSession):
                 older_oids = []
                 unknown_oids = []
                 server_objs = orb.get_objects_for_project(project)
+                # add in role assignments (empty list if not admin)
+                server_objs += project_ras
                 server_oids = [o.oid for o in server_objs]
                 # parameter and data element data for *ALL* project
                 # objects, regardless of mod_datetime
@@ -1882,9 +1893,11 @@ class RepositoryService(ApplicationSession):
             """
             Get [0] the Person object that corresponds to the userid, [1] all
             Organization and Project objects, [2] all Person objects, and [3]
-            either RoleAssignment objects for the specified user or all
-            RoleAssignment objects that correspond to the user's Administrator
-            role assignments.
+            either (a) for ordinary users, only the RoleAssignment objects for
+            the specified user or (b) for administrators, all non-project
+            RoleAssignment objects that correspond to the administrator's role
+            (project-related RoleAssignments will be returned when the project
+            is synced).
 
             Args:
                 userid (str):  userid of a person (Person.id)
@@ -1952,28 +1965,24 @@ class RepositoryService(ApplicationSession):
                 szd_people = serialize(orb, people)
             # RoleAssignment objects
             # (1) always return the user's direct role assignments
-            ras = set(orb.search_exact(cname='RoleAssignment',
-                                       assigned_to=user))
-            all_ras = set([ra for ra in orb.get_by_type('RoleAssignment')
-                           if ra.oid not in same_dts])
-            # (2) if a global admin, return ALL role assignments
+            ras = orb.search_exact(cname='RoleAssignment',
+                                   assigned_to=user)
+            orgs = orb.get_by_type('Organization')
+            admin_role = orb.get('pgefobjects:Role.Administrator')
+            # (2) if a global admin, return all non-project role assignments,
+            #     plus all admin role assignments (for projects and orgs)
             if is_global_admin(user):
-                ras = all_ras
-            else:
-                # (3) if a project admin, return all role assignments for the
-                #     orgs of which they are an admin
-                admin_role = orb.get('pgefobjects:Role.Administrator')
-                admin_ras = orb.select('RoleAssignment',
-                                       assigned_role=admin_role,
-                                       assigned_to=user)
-                orgs = []
-                if admin_ras:
-                    orgs = [ra.role_assignment_context for ra in admin_ras]
-                    if orgs:
-                        ras |= set([ra for ra in all_ras
-                                    if ra.role_assignment_context in orgs])
+                all_ras = [ra for ra in orb.get_by_type('RoleAssignment')
+                           if ra.oid not in same_dts]
+                non_proj_ras = [ra for ra in all_ras
+                                if ra.role_assignment_context in orgs]
+                ras += non_proj_ras
+                admin_ras = orb.search_exact(cname='RoleAssignment',
+                                             assigned_role=admin_role)
+                ras += admin_ras
             if ras:
-                szd_ras = serialize(orb, ras)
+                # use set() to remove duplicates from ras ...
+                szd_ras = serialize(orb, set(ras))
             return [szd_user, szd_orgs, szd_people, szd_ras, unknown_oids,
                     MINIMUM_CLIENT_VERSION]
 
