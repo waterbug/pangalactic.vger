@@ -582,6 +582,8 @@ class RepositoryService(ApplicationSession):
                 return dict(new_obj_dts={}, mod_obj_dts={}, unauth=unauth_ids,
                             no_owners=no_owners)
             output = deserialize(orb, authorized.values(), dictify=True)
+            # NOTE: vger must recompute parameters -- not done on client
+            orb.recompute_parmz()
             # ================================================================
             # special case for PSUs in the "SANDBOX" project: DO NOT send
             # messages to other users regarding ProjectSystemUsages for which
@@ -590,6 +592,7 @@ class RepositoryService(ApplicationSession):
             # should be removed from the output ...
             # ================================================================
             sb_oid = "pgefobjects:SANDBOX"
+            to_save = []
             for label in ['new', 'modified', 'unmodified', 'error']:
                 if output.get(label):
                     psus = [o for o in output[label]
@@ -598,6 +601,10 @@ class RepositoryService(ApplicationSession):
                         for psu in psus:
                             if getattr(psu.system, 'oid', '') == sb_oid:
                                 output[label].remove(psu)
+                    if label in ["new", "modified"]:
+                        to_save += output[label]
+            if to_save:
+                orb.save(to_save)
             # ================================================================
             mod_obj_dts = {}
             new_obj_dts = {}
@@ -1868,7 +1875,7 @@ class RepositoryService(ApplicationSession):
             if oids:
                 return {oid: parameterz.get(oid) for oid in oids}
             else:
-                return {oid: parameterz.get(oid) for oid in orb.get_oids()}
+                return parameterz
 
         yield self.register(get_parmz, 'vger.get_parmz')
 
