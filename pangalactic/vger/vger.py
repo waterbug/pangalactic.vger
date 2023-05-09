@@ -563,10 +563,12 @@ class RepositoryService(ApplicationSession):
             # existing objects for which the user has 'modify' permission
             for oid, so in sobjs_unique.items():
                 obj_in_repo = orb.get(so.get('oid'))
-                perms = get_perms(obj_in_repo, user=user_obj)
-                if 'modify' in perms:
-                    # orb.log.info('  auth (perms: {})'.format(str(perms)))
-                    authorized[oid] = so
+                if obj_in_repo:
+                    obj_id = obj_in_repo.id
+                    perms = get_perms(obj_in_repo, user=user_obj)
+                    orb.log.info(f'  - perms: {perms} | id: "{obj_id}"')
+                    if 'modify' in perms:
+                        authorized[oid] = so
             # instances of classes which anyone can modify
             for oid, so in sobjs_unique.items():
                 if so['_cname'] in modifiables:
