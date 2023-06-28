@@ -28,6 +28,7 @@ from pangalactic.core                  import (config, deleted, state,
                                                write_state)
 from pangalactic.core.access           import (get_perms, is_cloaked,
                                                is_global_admin, modifiables)
+from pangalactic.core.clone            import clone
 from pangalactic.core.mapping          import schema_maps
 from pangalactic.core.parametrics      import (add_default_parameters,
                                                add_default_data_elements,
@@ -441,6 +442,63 @@ class RepositoryService(ApplicationSession):
                     return {'result': 'nothing saved.'}
 
         yield self.register(assign_role, 'vger.assign_role',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def add_update_model(mtype_oid='', fpath= '', parms=None,
+                             cb_details=None):
+            """
+            Add or update a Model instance and associated Representation and
+            RepresentationFile objects.
+
+            Keyword Args:
+                mtype_oid (str):  oid of the applicable ModelType
+                fpath (str):  local path to file on user's machine
+                parms (dict):  data to use in creating the Model
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Return:
+                result (tuple):  model oid, fpath
+            """
+            orb.log.info('* [rpc] vger.add_update_model() ...')
+            orb.log.info(f'        mtype_oid: "{mtype_oid}"')
+            orb.log.info(f'        fpath: "{fpath}"')
+            orb.log.info(f'        parms: {parms}')
+            userid = getattr(cb_details, 'caller_authid', 'unknown')
+            user_obj = orb.select('Person', id=userid)
+            dts = dtstamp()
+            mtype = orb.get(mtype_oid)
+            m_id = parms.get('id', '')
+            m_name = parms.get('name', '')
+            m_desc = parms.get('description', '')
+            thing = orb.get(parms.get('of_thing_oid', ''))
+            owner = thing.owner
+            fname = parms.get('file name')
+            model = clone('Model', of_thing=thing, type_of_model=mtype,
+                          id=m_id, name=m_name,
+                          description=m_desc, owner=owner,
+                          creator=user_obj, modifier=user_obj,
+                          create_datetime=dts, mod_datetime=dts)
+            orb.log.info(f'  new model created: "{model.name}"')
+            rep_id = m_id + '_representation'
+            rep_name = m_name + ' representation'
+            rep = clone('Representation', of_object=model,
+                        id=rep_id, name=rep_name,
+                        create_datetime=dts, mod_datetime=dts)
+            repfile_id = rep_id + '_file'
+            repfile_name = rep_name + ' file'
+            # url is used for local path on the server
+            url = os.path.join(self.uploads_path, fname)
+            rep_file = clone('RepresentationFile', of_representation=rep,
+                             id=repfile_id, name=repfile_name,
+                             user_file_name=fname, url=url,
+                             create_datetime=dts, mod_datetime=dts)
+            orb.save([model, rep, rep_file])
+            channel = 'vger.channel.' + owner.id
+            sobjs = serialize(orb, [model, rep, rep_file])
+            self.publish(channel, {'new': sobjs})
+            return fpath, sobjs
+
+        yield self.register(add_update_model, 'vger.add_update_model',
                             RegisterOptions(details_arg='cb_details'))
 
         def upload_chunk(fname=None, seq=0, data=b'', cb_details=None):
