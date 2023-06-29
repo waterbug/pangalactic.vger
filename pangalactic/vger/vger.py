@@ -231,7 +231,6 @@ class RepositoryService(ApplicationSession):
         else:
             orb.log.info('  all HW and Template ids are correct.')
         # =====================================================================
-        # orb.dump_all()
         dispatcher.connect(self.on_log_info_msg, 'log info msg')
         dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
         atexit.register(self.shutdown)
@@ -266,18 +265,16 @@ class RepositoryService(ApplicationSession):
     def on_log_debug_msg(self, msg=''):
         orb.log.debug(msg)
 
+    def onDisconnect(self):
+        self.log.info("* disconnected.")
+
     def shutdown(self):
         """
-        Serialize all database objects to a yaml file
-        (db-dump-[datetime stamp].yaml) and save all caches, putting all files
-        into the `backup` directory.  If the server is updated and the update
-        includes a schema change, the orb can read, convert, and import the db
-        dump file into a new database and parameter / data element caches after
-        the server is restarted.
+        Write the server's "state" file in preparation for exit.
         """
         write_state(os.path.join(orb.home, 'state'))
-        # dump_all() saves all caches and writes db to a yaml file
-        orb.dump_all()
+        self.leave(reason="shut down")
+        self.disconnect()
 
     def onConnect(self):
         self.log.info("* connected to crossbar ...")
@@ -442,6 +439,24 @@ class RepositoryService(ApplicationSession):
                     return {'result': 'nothing saved.'}
 
         yield self.register(assign_role, 'vger.assign_role',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def backup(cb_details=None):
+            """
+            Serialize all database objects to a yaml file (db-dump-[datetime
+            stamp].yaml) and save all caches, putting all files into the
+            `backup` directory.
+            """
+            # dump_all() saves all caches and writes db to a yaml file
+            userid = getattr(cb_details, 'caller_authid', 'unknown')
+            user = orb.select('Person', id=userid)
+            if is_global_admin(user):
+                orb.dump_all()
+                return {'result': 'success.'}
+            else:
+                return {'result': 'not authorized.'}
+
+        yield self.register(backup, 'vger.backup',
                             RegisterOptions(details_arg='cb_details'))
 
         def add_update_model(mtype_oid='', fpath= '', parms=None,
