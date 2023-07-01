@@ -131,10 +131,12 @@ class RepositoryService(ApplicationSession):
                 orb.assign_test_parameters(hw, parms=test_mel_parms,
                                            des=test_mel_des)
                 state['test_project_loaded'] = True
+        # [SCW 2023-07-01] NOTE: this "uploads" dir seems unnecessary, just use
+        # the vault, Luke!
         # create an "uploads" directory if there isn't one
-        self.uploads_path = os.path.join(orb.home, 'vault', 'uploads')
-        if not os.path.exists(self.uploads_path):
-            os.makedirs(self.uploads_path)
+        # self.uploads_path = os.path.join(orb.vault, 'uploads')
+        # if not os.path.exists(self.uploads_path):
+            # os.makedirs(self.uploads_path)
         # load data from "extra_data" dir
         extra_data_path = os.path.join(orb.home, 'extra_data')
         if not os.path.exists(extra_data_path):
@@ -502,7 +504,9 @@ class RepositoryService(ApplicationSession):
             repfile_id = rep_id + '_file'
             repfile_name = rep_name + ' file'
             # url is used for local path on the server
-            url = os.path.join(self.uploads_path, fname)
+            # NOTE: "uploads_path" is deprecated in favor of vault ...
+            # url = os.path.join(self.uploads_path, fname)
+            url = os.path.join('vault://', fname)
             rep_file = clone('RepresentationFile', of_representation=rep,
                              id=repfile_id, name=repfile_name,
                              user_file_name=fname, url=url,
@@ -534,7 +538,7 @@ class RepositoryService(ApplicationSession):
             orb.log.info(f'  fname: {fname}')
             orb.log.info(f'  chunk size: {n}')
             # write to file
-            fpath = os.path.join(self.uploads_path, fname)
+            fpath = os.path.join(orb.vault, fname)
             with open(fpath, 'ab') as f:
                 f.write(data)
             return seq
