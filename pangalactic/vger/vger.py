@@ -464,8 +464,8 @@ class RepositoryService(ApplicationSession):
         def add_update_model(mtype_oid='', fpath= '', parms=None,
                              cb_details=None):
             """
-            Add or update a Model instance and associated Representation and
-            RepresentationFile objects.
+            Add or update a Model instance and associated RepresentationFile
+            objects.
 
             Keyword Args:
                 mtype_oid (str):  oid of the applicable ModelType
@@ -496,24 +496,17 @@ class RepositoryService(ApplicationSession):
                           creator=user_obj, modifier=user_obj,
                           create_datetime=dts, mod_datetime=dts)
             orb.log.info(f'  new model created: "{model.name}"')
-            rep_id = m_id + '_representation'
-            rep_name = m_name + ' representation'
-            rep = clone('Representation', of_object=model,
-                        id=rep_id, name=rep_name,
-                        create_datetime=dts, mod_datetime=dts)
-            repfile_id = rep_id + '_file'
-            repfile_name = rep_name + ' file'
-            # url is used for local path on the server
-            # NOTE: "uploads_path" is deprecated in favor of vault ...
-            # url = os.path.join(self.uploads_path, fname)
-            url = os.path.join('vault://', fname)
-            rep_file = clone('RepresentationFile', of_representation=rep,
-                             id=repfile_id, name=repfile_name,
-                             user_file_name=fname, url=url,
+            rep_file_id = m_id + '_file'
+            rep_file_name = m_name + ' file'
+            rep_file = clone('RepresentationFile', of_object=model,
+                             id=rep_file_id, name=rep_file_name,
+                             user_file_name=fname,
                              create_datetime=dts, mod_datetime=dts)
-            orb.save([model, rep, rep_file])
+            vault_fname = rep_file.oid + '_' + fname
+            rep_file.url = os.path.join('vault://', vault_fname)
+            orb.save([model, rep_file])
             channel = 'vger.channel.' + owner.id
-            sobjs = serialize(orb, [model, rep, rep_file])
+            sobjs = serialize(orb, [model, rep_file])
             self.publish(channel, {'new': sobjs})
             return fpath, sobjs
 
@@ -525,7 +518,7 @@ class RepositoryService(ApplicationSession):
             Upload a chunk of file data.
 
             Keyword Args:
-                fname (str):  name of the data's file
+                fname (str):  data file as named in the vault
                 seq (int):  sequence number of chunk
                 data (bytes):  data
                 cb_details:  added by crossbar; not included in rpc signature
