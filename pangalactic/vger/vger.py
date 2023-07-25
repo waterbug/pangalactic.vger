@@ -3,7 +3,8 @@
 """
 The Virtual Galactic Entropy Reverser
 """
-import argparse, atexit, json, os, sqlite3, sys, traceback
+import argparse, atexit, json, math, os, sqlite3, sys, traceback
+from functools import partial
 from uuid import uuid4
 
 import ruamel_yaml as yaml
@@ -470,7 +471,8 @@ class RepositoryService(ApplicationSession):
             Keyword Args:
                 mtype_oid (str):  oid of the applicable ModelType
                 fpath (str):  local path to file on user's machine
-                parms (dict):  data to use in creating the Model
+                parms (dict):  data to use in creating the Model and
+                    RepresentationFile
                 cb_details:  added by crossbar; not included in rpc signature
 
             Return:
@@ -490,6 +492,7 @@ class RepositoryService(ApplicationSession):
             thing = orb.get(parms.get('of_thing_oid', ''))
             owner = thing.owner
             fname = parms.get('file name')
+            fsize = parms.get('file size')
             model = clone('Model', of_thing=thing, type_of_model=mtype,
                           id=m_id, name=m_name,
                           description=m_desc, owner=owner,
@@ -500,7 +503,7 @@ class RepositoryService(ApplicationSession):
             rep_file_name = m_name + ' file'
             rep_file = clone('RepresentationFile', of_object=model,
                              id=rep_file_id, name=rep_file_name,
-                             user_file_name=fname,
+                             user_file_name=fname, file_size=fsize,
                              create_datetime=dts, mod_datetime=dts)
             vault_fname = rep_file.oid + '_' + fname
             rep_file.url = os.path.join('vault://', vault_fname)
@@ -557,6 +560,63 @@ class RepositoryService(ApplicationSession):
             return 'success'
 
         yield self.register(save_uploaded_file, 'vger.save_uploaded_file',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def download_chunk(digital_file_oid='', seq=0, cb_details=None):
+            """
+            Send the specified chunk of file data to requestor.
+
+            Keyword Args:
+                digital_file_oid (str):  oid of the DigitalFile instance whose
+                    physical file is to be chunkified and downloaded
+                seq (int):  sequence number of chunk
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Return:
+                result (bytes):  chunk of data (empty if failure)
+            """
+            orb.log.info('* [rpc] vger.download_chunk() ...')
+            orb.log.info(f'  digital_file_oid: {digital_file_oid}')
+            orb.log.info(f'  seq of chunk requested: {seq}')
+            digital_file = orb.get(digital_file_oid)
+            if digital_file:
+                # NOTE: chunk_size could be set as a kwarg if necessary
+                chunk_size = 2**19
+                fname = digital_file.user_file_name
+                orb.log.info(f'  user_file_name: {fname}')
+                orb.log.info(f'  chunk size: {chunk_size}')
+                # read from file
+                vault_fname = digital_file_oid + '_' + fname
+                fpath = os.path.join(orb.vault, vault_fname)
+                fsize = digital_file.file_size
+                numchunks = math.ceil(fsize / chunk_size)
+                chunked_data_fnames = [vault_fname + '_' + str(i)
+                                       for i in range(numchunks)]
+                chunk_fpath0 = os.path.join(orb.vault, chunked_data_fnames[0])
+                if not os.path.exists(chunk_fpath0):
+                    # create chunked data files ...
+                    vaultf = open(fpath, 'rb')
+                    for i, chunk in enumerate(iter(
+                                    partial(vaultf.read, chunk_size), b'')):
+                        chunk_fpath = os.path.join(orb.vault,
+                                                   chunked_data_fnames[i])
+                        with open(chunk_fpath, 'wb') as f:
+                            f.write(chunk)
+                chunk_fpath = os.path.join(orb.vault, chunked_data_fnames[seq])
+                if os.path.exists(chunk_fpath):
+                    with open(chunk_fpath, 'rb') as f:
+                        chunk = f.read()
+                    return digital_file_oid, seq, chunk
+                else:
+                    orb.log.info(f'  chunk {seq} not found, returning empty')
+                    # raise exception here?
+                    return digital_file_oid, seq, b''
+            else:
+                orb.log.info('  failure: digital file not found.')
+                # raise exception here?
+                return digital_file_oid, seq, b''
+
+        yield self.register(download_chunk, 'vger.download_chunk',
                             RegisterOptions(details_arg='cb_details'))
 
         def save(serialized_objs, cb_details=None):
@@ -1189,6 +1249,9 @@ class RepositoryService(ApplicationSession):
                                   if o.owner not in projects]
             template_oids = set([o.oid for o in non_proj_templates])
             ded_oids = set(orb.get_oids(cname='DataElementDefinition'))
+            # NOTE: because of serializer logic, Model instances will
+            # automatically bring along any related RepresentationFile
+            # instances
             models = orb.get_by_type('Model')
             non_proj_models = [o for o in models if o.owner not in projects]
             model_oids = set([o.oid for o in non_proj_models])
