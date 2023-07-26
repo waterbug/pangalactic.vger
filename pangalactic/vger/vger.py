@@ -53,6 +53,9 @@ from pangalactic.core.test.utils       import (create_test_users,
                                                create_test_project)
 from pangalactic.core.utils.datetimes  import dtstamp, earlier
 from pangalactic.core.uberorb          import orb
+from pangalactic.vger.lom              import (get_lom_data,
+                                               get_optical_surface_names,
+                                               get_LOM)
 from pangalactic.vger.userdir          import search_ldap_directory
 
 
@@ -490,6 +493,8 @@ class RepositoryService(ApplicationSession):
             m_name = parms.get('name', '')
             m_desc = parms.get('description', '')
             thing = orb.get(parms.get('of_thing_oid', ''))
+            # NOTE: it's possible that the model's owner is different from the
+            # product spec's owner -- allow that to be specified
             owner = thing.owner
             fname = parms.get('file name')
             fsize = parms.get('file size')
@@ -1823,6 +1828,51 @@ class RepositoryService(ApplicationSession):
                 return 'unauthorized'
 
         yield self.register(set_comp_mode_datum, 'vger.set_comp_mode_datum',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def get_lom_surface_names(lom_oid=None, cb_details=None):
+            """
+            Get the optical surface names from the specified Linear Optical
+            Model.
+
+            Keyword Args:
+                lom_oid (str):  oid of the LOM's Model instance
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                list of str
+            """
+            orb.log.info('* [rpc] vger.get_lom_surface_names() ...')
+            # initial assumptions:
+            # (1) the owner of the optical system spec is also the owner of the
+            #     LOM Model (typically a project)
+            # (2) the LOM Model has a single RepresentationFile, which is a
+            #     Matlab file (.mat).
+            lom = orb.get(lom_oid)
+            if not lom:
+                return "unknown model oid"
+            userid = getattr(cb_details, 'caller_authid', '')
+            user = orb.select('Person', id=userid)
+            # get role assignments in the owner org for the LOM
+            ras = orb.search_exact(cname='RoleAssignment',
+                                   assigned_to=user,
+                                   role_assignment_context=lom.owner)
+            # any role in the owner org is permitted access to the LOM data
+            if ras or is_global_admin(user):
+                if lom.has_files:
+                    rfile = lom.has_files[0]
+                    orb.log.info(f'  LOM file found: {rfile.user_file_name}')
+                    vault_fname = rfile.oid + '_' + rfile.user_file_name
+                    vault_fpath = os.path.join(orb.vault, vault_fname)
+                    data = get_lom_data(vault_fpath)
+                    return get_optical_surface_names(data)
+                else:
+                    return 'no LOM files found'
+            else:
+                return 'unauthorized'
+
+        yield self.register(get_lom_surface_names,
+                            'vger.get_lom_surface_names',
                             RegisterOptions(details_arg='cb_details'))
 
         def search_exact(**kw):
