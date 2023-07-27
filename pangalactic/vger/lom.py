@@ -65,8 +65,8 @@ def get_LOM(data):
 
 def import_lom_assembly(fpath):
     """
-    Import the model assembly structure from a Linear Optical Model (.mat)
-    file.
+    Create a product assembly structure based on the optical surfaces in a
+    Linear Optical Model (.mat) file.
     """
     orb.log.debug('* import_lom_assembly()')
     data = None
@@ -83,9 +83,11 @@ def import_lom_assembly(fpath):
         new_objs = []
         surface_names = get_optical_surface_names(data)
         comp_names = []
-        optics = orb.search_exact(cname='Discipline', name='Optics')
-        LOM = orb.get('pgefobjects:ModelType.Optics.LOM')
-        optical_component = orb.get(
+        optics = orb.select('Discipline', name='Optics')
+        LOM_type = orb.get('pgefobjects:ModelType.LOM')
+        optical_system_type = orb.get(
+                              'pgefobjects:ProductType.optical_system')
+        optical_component_type = orb.get(
                               'pgefobjects:ProductType.optical_component')
         if surface_names:
             NOW = dtstamp()
@@ -97,18 +99,18 @@ def import_lom_assembly(fpath):
                 # new objects created from the data.
                 opt_sys = orb.search_exact(cname='HardwareProduct',
                                            name=sys_name)
-                opt_sys_model = orb.search_exact(
-                                    cname='Model', name=sys_name,
-                                    of_thing=opt_sys,
-                                    model_definition_context=optics,
-                                    type_of_model=LOM)
-                if opt_sys_model:
-                    comp_names = [acu.component.name
-                                  for acu in opt_sys_model.components]
+                if opt_sys:
+                    opt_sys_model = orb.select('Model',
+                                               of_thing=opt_sys,
+                                               type_of_model=LOM_type)
+                    if opt_sys_model:
+                        comp_names = [acu.component.name
+                                      for acu in opt_sys_model.components]
                 else:
                     # create a HardwareProduct and a Model representing the
                     # system
                     opt_sys = clone('HardwareProduct', id=sys_name,
+                                    product_type=optical_system_type,
                                     name=sys_name, create_datetime=NOW,
                                     mod_datetime=NOW, creator=user,
                                     modifier=user)
@@ -116,7 +118,7 @@ def import_lom_assembly(fpath):
                                         name=sys_name,
                                         of_thing=opt_sys,
                                         model_definition_context=optics,
-                                        type_of_model=LOM,
+                                        type_of_model=LOM_type,
                                         create_datetime=NOW,
                                         mod_datetime=NOW, creator=user,
                                         modifier=user)
@@ -126,13 +128,13 @@ def import_lom_assembly(fpath):
                     # create a HW product and Acu for each surface that is
                     # not found among the system components ...
                     opt_comp = clone('HardwareProduct', id=name, name=name,
-                                     product_type=optical_component,
+                                     product_type=optical_component_type,
                                      create_datetime=NOW, mod_datetime=NOW,
                                      creator=user, modifier=user)
                     surface = clone('Model', id=name, name=name,
                                     of_thing=opt_comp,
                                     model_definition_context=optics,
-                                    type_of_model=LOM,
+                                    type_of_model=LOM_type,
                                     create_datetime=NOW, mod_datetime=NOW,
                                     creator=user, modifier=user)
                     new_objs.append(surface)
@@ -159,7 +161,6 @@ def import_lom_assembly(fpath):
                     new_objs += [hw_usage, model_usage]
             if new_objs:
                 orb.save(new_objs)
-                dispatcher.send(signal="new objects", objs=new_objs)
         else:
             orb.log.debug('  no surface names were found.')
     else:
