@@ -31,9 +31,7 @@ from pangalactic.core.access           import (get_perms, is_cloaked,
                                                is_global_admin, modifiables)
 from pangalactic.core.clone            import clone
 from pangalactic.core.mapping          import schema_maps
-from pangalactic.core.parametrics      import (add_default_parameters,
-                                               add_default_data_elements,
-                                               componentz, systemz,
+from pangalactic.core.parametrics      import (componentz, systemz,
                                                data_elementz, parameterz,
                                                de_defz,
                                                delete_parameter,
@@ -54,8 +52,7 @@ from pangalactic.core.test.utils       import (create_test_users,
 from pangalactic.core.utils.datetimes  import dtstamp, earlier
 from pangalactic.core.uberorb          import orb
 from pangalactic.vger.lom              import (get_lom_data,
-                                               get_optical_surface_names,
-                                               get_LOM)
+                                               get_optical_surface_names)
 from pangalactic.vger.userdir          import search_ldap_directory
 
 
@@ -75,15 +72,6 @@ class RepositoryService(ApplicationSession):
     """
     The Pan Galactic Engineering Repository Service container object
     (Application Session)
-
-    Note that the canonical way to add application-specific reference data is
-    to place file(s) containing serialized objects representing the reference
-    data into the "extra_data" directory, which the server will load when
-    started or restarted.  This applies particularly to DataElementDefinition,
-    ParameterDefinition, and ParameterContext objects but can apply to any
-    reference data.  For Parameters and Data Elements, these are critical since
-    the repository will ignore any parameter or data element instance data for
-    which corresponding definition objects do not exist.
     """
     # NOTE to developers:  
     # For the serialization structure of PGEF domain class definitions, see
@@ -141,7 +129,9 @@ class RepositoryService(ApplicationSession):
         # self.uploads_path = os.path.join(orb.vault, 'uploads')
         # if not os.path.exists(self.uploads_path):
             # os.makedirs(self.uploads_path)
-        # load data from "extra_data" dir
+        # load data from "extra_data" dir -- this is the canonical way to
+        # restore data from a backup into a new database instance, and/or to
+        # load test data, etc.
         extra_data_path = os.path.join(orb.home, 'extra_data')
         if not os.path.exists(extra_data_path):
             # if 'extra_data' dir is not found, check current directory for it
@@ -170,24 +160,6 @@ class RepositoryService(ApplicationSession):
                             if objs:
                                 n = len(objs)
                                 orb.log.info(f'    loaded {n} objs.')
-                                # ensure all HW items have default parms/des
-                                HW = orb.classes['HardwareProduct']
-                                hw = [o for o in objs if isinstance(o, HW)]
-                                if hw:
-                                    hw_added = True
-                                    msg = '- adding default parameters and '
-                                    msg += 'data elements to HW products ... '
-                                    orb.log.info(f'    {msg}')
-                                    for product in hw:
-                                        add_default_parameters(product)
-                                        add_default_data_elements(product)
-                                        # freeze all non-project specs
-                                        Project = orb.classes['Project']
-                                        if not isinstance(product.owner,
-                                                          Project):
-                                            product.frozen = True
-                                    orb.db.commit()
-                                orb.log.info('    done.')
                             else:
                                 msg = '0 new or modified objs in data.'
                                 orb.log.info('    {}'.format(msg))
