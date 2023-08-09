@@ -34,7 +34,7 @@ def get_optical_surface_names(data):
     Return:
         a list of strings
     """
-    return list(data["lomdata"]["SURFACES"])
+    return [surface['surfacelabel'] for surface in data["lomdata"]["LOM"]]
 
 def get_LOM(data):
     """
