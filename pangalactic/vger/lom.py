@@ -3,13 +3,8 @@
 """
 Interface to the Linear Optical Model
 """
-import os
-
-from louie import dispatcher
-
 from scipy.io import loadmat
 
-from pangalactic.core             import state
 from pangalactic.core.clone       import clone
 from pangalactic.core.names       import (get_acu_id, get_acu_name,
                                           get_next_ref_des)
@@ -63,106 +58,73 @@ def get_LOM(data):
     """
     return list(data["lomdata"]["LOM"])
 
-def import_lom_assembly(fpath):
+def extract_lom_structure(lom, fpath):
     """
-    Create a product assembly structure based on the optical surfaces in a
-    Linear Optical Model (.mat) file.
+    Extract the optical system structure from a Linear Optical Model matlab
+    (.mat) file.
+
+    Args:
+        lom (Model): Model instance representing the LOM
+        fpath (str): path to the LOM file
     """
-    orb.log.debug('* import_lom_assembly()')
+    orb.log.debug('* extract_lom_structure()')
     data = None
-    sys_name = ''
     try:
         data = get_lom_data(fpath)
-        fname = os.path.basename(fpath)
-        sys_name = fname.split('.')[0]
     except:
         # TODO: log the traceback
         orb.log.debug(f' - file "{fpath}" could not be opened.')
         return
     if data:
         new_objs = []
+        system = lom.of_thing
         surface_names = get_optical_surface_names(data)
-        comp_names = []
-        optics = orb.select('Discipline', name='Optics')
-        LOM_type = orb.get('pgefobjects:ModelType.LOM')
-        optical_system_type = orb.get(
-                              'pgefobjects:ProductType.optical_system')
+        comps_by_name = {acu.component.name : acu.component
+                         for acu in system.components}
+        acus_by_name = {acu.component.name : acu
+                        for acu in system.components}
         optical_component_type = orb.get(
                               'pgefobjects:ProductType.optical_component')
         if surface_names:
             NOW = dtstamp()
-            user = orb.get(state.get('local_user_oid'))
-            if sys_name:
-                # TODO: have a discussion about versioning etc. ... if
-                # versioning is used, the search for existing items should
-                # reference version(s), and versions should be added to any
-                # new objects created from the data.
-                opt_sys = orb.search_exact(cname='HardwareProduct',
-                                           name=sys_name)
-                if opt_sys:
-                    opt_sys_model = orb.select('Model',
-                                               of_thing=opt_sys,
-                                               type_of_model=LOM_type)
-                    if opt_sys_model:
-                        comp_names = [acu.component.name
-                                      for acu in opt_sys_model.components]
-                else:
-                    # create a HardwareProduct and a Model representing the
-                    # system
-                    opt_sys = clone('HardwareProduct', id=sys_name,
-                                    product_type=optical_system_type,
-                                    name=sys_name, create_datetime=NOW,
-                                    mod_datetime=NOW, creator=user,
-                                    modifier=user)
-                    opt_sys_model = clone('Model', id=sys_name,
-                                        name=sys_name,
-                                        of_thing=opt_sys,
-                                        model_definition_context=optics,
-                                        type_of_model=LOM_type,
-                                        create_datetime=NOW,
-                                        mod_datetime=NOW, creator=user,
-                                        modifier=user)
-                    new_objs += [opt_sys, opt_sys_model]
+            user = orb.get('pgefobjects:admin')
             for name in surface_names:
-                if name not in comp_names:
+                if name not in comps_by_name:
                     # create a HW product and Acu for each surface that is
                     # not found among the system components ...
-                    opt_comp = clone('HardwareProduct', id=name, name=name,
+                    opt_comp = clone('HardwareProduct', id=name,
+                                     name=name, owner=lom.owner,
                                      product_type=optical_component_type,
                                      create_datetime=NOW, mod_datetime=NOW,
                                      creator=user, modifier=user)
-                    surface = clone('Model', id=name, name=name,
-                                    of_thing=opt_comp,
-                                    model_definition_context=optics,
-                                    type_of_model=LOM_type,
-                                    create_datetime=NOW, mod_datetime=NOW,
-                                    creator=user, modifier=user)
-                    new_objs.append(surface)
-                    # TODO: add id and name to each Acu
-                    hw_ref_des = get_next_ref_des(opt_sys, opt_comp)
-                    hw_acu_id = get_acu_id(opt_sys.id, hw_ref_des)
-                    hw_acu_name = get_acu_name(opt_sys.name, hw_ref_des)
-                    hw_usage = clone('Acu', assembly=opt_sys,
-                                id=hw_acu_id, name=hw_acu_name,
-                                reference_designator=hw_ref_des,
-                                component=opt_comp, create_datetime=NOW,
-                                mod_datetime=NOW, creator=user,
-                                modifier=user)
-                    model_ref_des = get_next_ref_des(opt_sys_model, surface)
-                    model_acu_id = get_acu_id(opt_sys_model.id, hw_ref_des)
-                    model_acu_name = get_acu_name(opt_sys_model.name,
-                                                  hw_ref_des)
-                    model_usage = clone('Acu', assembly=opt_sys_model,
-                                    id=model_acu_id, name=model_acu_name,
-                                    reference_designator=model_ref_des,
-                                    component=surface, create_datetime=NOW,
-                                    mod_datetime=NOW, creator=user,
-                                    modifier=user)
-                    new_objs += [hw_usage, model_usage]
+                    new_objs.append(opt_comp)
+                    oc_ref_des = get_next_ref_des(system, opt_comp)
+                    oc_acu_id = get_acu_id(system.id, oc_ref_des)
+                    oc_acu_name = get_acu_name(system.name, oc_ref_des)
+                    oc_usage = clone('Acu',
+                                assembly=system, component=opt_comp,
+                                id=oc_acu_id, name=oc_acu_name,
+                                reference_designator=oc_ref_des,
+                                create_datetime=NOW, mod_datetime=NOW,
+                                creator=user, modifier=user)
+                    new_objs.append(oc_usage)
+            # NOTE: any existing HW objects that are found among the system
+            # components but whose names are not in surface_names will be
+            # flagged to be deleted -- the assumption is that the LOM is
+            # authoritative as to system structure
+            objs_to_delete = []
+            for name in comps_by_name:
+                if name not in surface_names:
+                    hw = comps_by_name[name]
+                    acu = acus_by_name[name]
+                    objs_to_delete += [hw, acu]
             if new_objs:
                 orb.save(new_objs)
+            return (new_objs, objs_to_delete)
         else:
             orb.log.debug('  no surface names were found.')
+            return ([], [])
     else:
         orb.log.debug('  no data was found.')
+        return ([], [])
 

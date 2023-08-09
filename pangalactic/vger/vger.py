@@ -39,6 +39,8 @@ from pangalactic.core.parametrics      import (componentz, systemz,
                                                mode_defz,
                                                parm_defz, parmz_by_dimz,
                                                rqt_allocz,
+                                               save_data_elementz,
+                                               save_parmz,
                                                serialize_compz,
                                                serialize_systemz,
                                                serialize_rqt_allocz,
@@ -52,7 +54,8 @@ from pangalactic.core.test.utils       import (create_test_users,
 from pangalactic.core.utils.datetimes  import dtstamp, earlier
 from pangalactic.core.uberorb          import orb
 from pangalactic.vger.lom              import (get_lom_data,
-                                               get_optical_surface_names)
+                                               get_optical_surface_names,
+                                               extract_lom_structure)
 from pangalactic.vger.userdir          import search_ldap_directory
 
 
@@ -251,6 +254,8 @@ class RepositoryService(ApplicationSession):
         Write the server's "state" file in preparation for exit.
         """
         write_state(os.path.join(orb.home, 'state'))
+        save_parmz(orb.home)
+        save_data_elementz(orb.home)
         self.leave(reason="shut down")
         self.disconnect()
 
@@ -461,21 +466,28 @@ class RepositoryService(ApplicationSession):
             user_obj = orb.select('Person', id=userid)
             dts = dtstamp()
             mtype = orb.get(mtype_oid)
-            m_id = parms.get('id', '')
-            m_name = parms.get('name', '')
-            m_desc = parms.get('description', '')
-            thing = orb.get(parms.get('of_thing_oid', ''))
-            # NOTE: it's possible that the model's owner is different from the
-            # product spec's owner -- allow that to be specified
-            owner = thing.owner
             fname = parms.get('file name')
             fsize = parms.get('file size')
+            m_name = parms.get('name', '')
+            if not m_name:
+                # if name is missing, use file name minus suffix ...
+                m_name = '.'.join(fname.split('.')[:-1])
+            m_id_prefix = m_name.replace(' ', '_').lower()
+            m_id_suffix = str(uuid4().int)[:6]
+            m_id = m_id_prefix + '-' + m_id_suffix
+            m_desc = parms.get('description', '')
+            thing = orb.get(parms.get('of_thing_oid', ''))
+            orb.log.info(f'        model of thing: {thing.id}')
+            # TODO: it's possible that the model's owner is different from the
+            # product spec's owner -- allow that to be specified
+            orb.log.info(f'        owner of thing: {thing.owner.id}')
             model = clone('Model', of_thing=thing, type_of_model=mtype,
                           id=m_id, name=m_name,
-                          description=m_desc, owner=owner,
+                          description=m_desc, owner=thing.owner,
                           creator=user_obj, modifier=user_obj,
                           create_datetime=dts, mod_datetime=dts)
             orb.log.info(f'  new model created: "{model.name}"')
+            orb.log.info(f'  model owner: "{model.owner.id}"')
             rep_file_id = m_id + '_file'
             rep_file_name = m_name + ' file'
             rep_file = clone('RepresentationFile', of_object=model,
@@ -485,7 +497,7 @@ class RepositoryService(ApplicationSession):
             vault_fname = rep_file.oid + '_' + fname
             rep_file.url = os.path.join('vault://', vault_fname)
             orb.save([model, rep_file])
-            channel = 'vger.channel.' + owner.id
+            channel = 'vger.channel.' + thing.owner.id
             sobjs = serialize(orb, [model, rep_file])
             self.publish(channel, {'new': sobjs})
             return fpath, sobjs
@@ -916,11 +928,11 @@ class RepositoryService(ApplicationSession):
                         auth_dels[obj.oid] = obj
                     elif 'delete' in get_perms(obj, user=user):
                         auth_dels[obj.oid] = obj
-            # add oids of objects to be deleted to the 'deleted' cache
             if auth_dels:
                 auth = list(auth_dels)
                 orb.log.info(f'  authorized to delete: {auth}')
                 for oid, obj in auth_dels.items():
+                    # add oids of objects to be deleted to the 'deleted' cache
                     deleted[oid] = obj.id
                 write_deleted(os.path.join(orb.home, 'deleted'))
             oids_deleted = list(auth_dels.keys())
@@ -1845,6 +1857,75 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_lom_surface_names,
                             'vger.get_lom_surface_names',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def get_lom_structure(lom_oid=None, cb_details=None):
+            """
+            Get the structure and parameters of the specified Linear Optical
+            Model.
+
+            Keyword Args:
+                lom_oid (str):  oid of the LOM's Model instance
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                list of str
+            """
+            orb.log.info('* [rpc] vger.get_lom_structure() ...')
+            lom = orb.get(lom_oid)
+            if not lom:
+                return ("lom oid not found.", [])
+            userid = getattr(cb_details, 'caller_authid', '')
+            user = orb.select('Person', id=userid)
+            # get role assignments in the owner org for the LOM
+            ras = orb.search_exact(cname='RoleAssignment',
+                                   assigned_to=user,
+                                   role_assignment_context=lom.owner)
+            # any role in the owner org is permitted access to the LOM data
+            new, to_delete = [], []
+            if ras or is_global_admin(user):
+                if lom.has_files:
+                    rfile = lom.has_files[0]
+                    orb.log.info(f'  LOM file found: {rfile.user_file_name}')
+                    vault_fname = rfile.oid + '_' + rfile.user_file_name
+                    vault_fpath = os.path.join(orb.vault, vault_fname)
+                    new, to_delete = extract_lom_structure(lom, vault_fpath)
+                    if to_delete:
+                        to_delete_ids = [o.id for o in to_delete]
+                        orb.log.info(f'  items to delete: {to_delete_ids}')
+                        for obj in to_delete:
+                            # add oids of deleted to the 'deleted' cache
+                            deleted[obj.oid] = obj.id
+                        write_deleted(os.path.join(orb.home, 'deleted'))
+                        oids_deleted = [o.oid for o in to_delete]
+                        orb.delete(to_delete)
+                        for oid in oids_deleted:
+                            msg = 'publishing "deleted" on public channel.'
+                            orb.log.info(f'   {msg}')
+                            channel = 'vger.channel.public'
+                            self.publish(channel, {'deleted': oid})
+                        orb.log.info(f'  deleted: {oids_deleted}')
+                    if new:
+                        # publish "new" on owner channel
+                        channel_id = lom.owner.id
+                        channel = 'vger.channel.' + channel_id
+                        n = len(new)
+                        txt = f'publishing {n} items on channel "{channel_id}"'
+                        orb.log.info(f'   + {txt}')
+                        new_ids = [o.id for o in new]
+                        orb.log.debug('     new object ids:')
+                        for obj_id in new_ids:
+                            orb.log.debug(f'     - {obj_id}')
+                        ser_new = serialize(orb, new)
+                        self.publish(channel, {'new': ser_new})
+                    return ('success', lom_oid)
+                else:
+                    return ('no LOM files found', '')
+            else:
+                return ('unauthorized', '')
+
+        yield self.register(get_lom_structure,
+                            'vger.get_lom_structure',
                             RegisterOptions(details_arg='cb_details'))
 
         def search_exact(**kw):
