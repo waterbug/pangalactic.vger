@@ -473,14 +473,16 @@ class RepositoryService(ApplicationSession):
                 # if name is missing, use file name minus suffix ...
                 m_name = '.'.join(fname.split('.')[:-1])
             m_id_prefix = m_name.replace(' ', '_').lower()
+            # use a randomly-generated "suffix" to make the id unique
             m_id_suffix = str(uuid4().int)[:6]
             m_id = m_id_prefix + '-' + m_id_suffix
-            m_desc = parms.get('description', '')
+            m_desc = parms.get('description', '') or ''
             thing = orb.get(parms.get('of_thing_oid', ''))
             orb.log.info(f'        model of thing: {thing.id}')
             # TODO: it's possible that the model's owner is different from the
             # product spec's owner -- allow that to be specified
             orb.log.info(f'        owner of thing: {thing.owner.id}')
+            # Model
             model = clone('Model', of_thing=thing, type_of_model=mtype,
                           id=m_id, name=m_name,
                           description=m_desc, owner=thing.owner,
@@ -488,6 +490,7 @@ class RepositoryService(ApplicationSession):
                           create_datetime=dts, mod_datetime=dts)
             orb.log.info(f'  new model created: "{model.name}"')
             orb.log.info(f'  model owner: "{model.owner.id}"')
+            # RepresentationFile
             rep_file_id = m_id + '_file'
             rep_file_name = m_name + ' file'
             rep_file = clone('RepresentationFile', of_object=model,
@@ -503,6 +506,85 @@ class RepositoryService(ApplicationSession):
             return fpath, sobjs
 
         yield self.register(add_update_model, 'vger.add_update_model',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def add_update_doc(fpath= '', parms=None, cb_details=None):
+            """
+            Add or update a Document instance and associated DocumentReference
+            and RepresentationFile objects.
+
+            Keyword Args:
+                fpath (str):  local path to file on user's machine
+                parms (dict):  data to use in creating the objects
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Return:
+                result (tuple):  doc oid, fpath
+            """
+            orb.log.info('* [rpc] vger.add_update_doc() ...')
+            orb.log.info(f'        fpath: "{fpath}"')
+            orb.log.info(f'        parms: {parms}')
+            userid = getattr(cb_details, 'caller_authid', 'unknown')
+            user_obj = orb.select('Person', id=userid)
+            dts = dtstamp()
+            fname = parms.get('file name')
+            fsize = parms.get('file size')
+            doc_name = parms.get('name', '')
+            if not doc_name:
+                # if name is missing, use file name minus suffix ...
+                doc_name = '.'.join(fname.split('.')[:-1])
+            doc_id_prefix = doc_name.replace(' ', '_').lower()
+            # use a randomly-generated "suffix" to make the id unique
+            doc_id_suffix = str(uuid4().int)[:6]
+            doc_id = doc_id_prefix + '-' + doc_id_suffix
+            doc_desc = parms.get('description', '') or ''
+            rel_obj = orb.get(parms.get('rel_obj_oid', ''))
+            if not rel_obj:
+                # error condition -- no related object ...
+                return 'doc has no related object', []
+            orb.log.info(f'        doc related to object: {rel_obj.id}')
+            project = orb.get(parms.get('project_oid'))
+            orb.log.info(f'        doc owner: {project.id}')
+            document = clone('Document', id=doc_id, name=doc_name,
+                        description=doc_desc, owner=project,
+                        creator=user_obj, modifier=user_obj,
+                        create_datetime=dts, mod_datetime=dts)
+            orb.db.commit()
+            orb.log.info(f'  Document created: "{document.name}"')
+            orb.log.info(f'  Document owner: "{document.owner.id}"')
+            # RepresentationFile
+            rep_file_id = doc_id + '_file'
+            rep_file_name = doc_name + ' file'
+            rep_file = clone('RepresentationFile', of_object=document,
+                             id=rep_file_id, name=rep_file_name,
+                             user_file_name=fname, file_size=fsize,
+                             create_datetime=dts, mod_datetime=dts)
+            orb.db.commit()
+            orb.log.info(f'  RepresentationFile created: "{rep_file_name}"')
+            orb.log.info(f'  of_object: "{rep_file.of_object.id}"')
+            vault_fname = rep_file.oid + '_' + fname
+            rep_file.url = os.path.join('vault://', vault_fname)
+            # DocumentReference
+            doc_ref_id = doc_id + '-ref-' + rel_obj.id
+            doc_ref_name = doc_name + ' Ref to ' + rel_obj.name
+            doc_ref_desc = 'Document ' + doc_name
+            doc_ref_desc += ' reference to ' + rel_obj.name
+            doc_ref = clone('DocumentReference', id=doc_ref_id,
+                        name=doc_ref_name,
+                        document=document,
+                        related_item=rel_obj,
+                        description=doc_ref_desc,
+                        creator=user_obj, modifier=user_obj,
+                        create_datetime=dts, mod_datetime=dts)
+            orb.db.commit()
+            orb.log.info(f'  DocumentReference created: "{doc_ref.name}"')
+            orb.save([document, doc_ref, rep_file])
+            channel = 'vger.channel.' + document.owner.id
+            sobjs = serialize(orb, [document, doc_ref, rep_file])
+            self.publish(channel, {'new': sobjs})
+            return fpath, sobjs
+
+        yield self.register(add_update_doc, 'vger.add_update_doc',
                             RegisterOptions(details_arg='cb_details'))
 
         def upload_chunk(fname=None, seq=0, data=b'', cb_details=None):
