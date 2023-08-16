@@ -483,9 +483,10 @@ class RepositoryService(ApplicationSession):
             # product spec's owner -- allow that to be specified
             orb.log.info(f'        owner of thing: {thing.owner.id}')
             # Model
+            project = orb.get(parms.get('project_oid'))
             model = clone('Model', of_thing=thing, type_of_model=mtype,
                           id=m_id, name=m_name,
-                          description=m_desc, owner=thing.owner,
+                          description=m_desc, owner=project,
                           creator=user_obj, modifier=user_obj,
                           create_datetime=dts, mod_datetime=dts)
             orb.log.info(f'  new model created: "{model.name}"')
