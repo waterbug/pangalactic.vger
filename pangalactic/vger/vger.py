@@ -483,10 +483,12 @@ class RepositoryService(ApplicationSession):
             # product spec's owner -- allow that to be specified
             orb.log.info(f'        owner of thing: {thing.owner.id}')
             # Model
-            project = orb.get(parms.get('project_oid'))
+            owner = orb.get(parms.get('owner_oid'))
+            if not owner:
+                owner = orb.get(parms.get('project_oid'))
             model = clone('Model', of_thing=thing, type_of_model=mtype,
                           id=m_id, name=m_name,
-                          description=m_desc, owner=project,
+                          description=m_desc, owner=owner,
                           creator=user_obj, modifier=user_obj,
                           create_datetime=dts, mod_datetime=dts)
             orb.log.info(f'  new model created: "{model.name}"')
@@ -530,6 +532,7 @@ class RepositoryService(ApplicationSession):
             dts = dtstamp()
             fname = parms.get('file name')
             fsize = parms.get('file size')
+            # Document
             doc_name = parms.get('name', '')
             if not doc_name:
                 # if name is missing, use file name minus suffix ...
@@ -544,10 +547,13 @@ class RepositoryService(ApplicationSession):
                 # error condition -- no related object ...
                 return 'doc has no related object', []
             orb.log.info(f'        doc related to object: {rel_obj.id}')
-            project = orb.get(parms.get('project_oid'))
-            orb.log.info(f'        doc owner: {project.id}')
+            owner = orb.get(parms.get('owner_oid'))
+            if not owner:
+                # owner defaults to project
+                owner = orb.get(parms.get('project_oid'))
+            orb.log.info(f'        doc owner: {owner.id}')
             document = clone('Document', id=doc_id, name=doc_name,
-                        description=doc_desc, owner=project,
+                        description=doc_desc, owner=owner,
                         creator=user_obj, modifier=user_obj,
                         create_datetime=dts, mod_datetime=dts)
             orb.db.commit()
