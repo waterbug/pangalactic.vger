@@ -503,7 +503,7 @@ class RepositoryService(ApplicationSession):
             vault_fname = rep_file.oid + '_' + fname
             rep_file.url = os.path.join('vault://', vault_fname)
             orb.save([model, rep_file])
-            channel = 'vger.channel.' + thing.owner.id
+            channel = 'vger.channel.' + model.owner.id
             sobjs = serialize(orb, [model, rep_file])
             self.publish(channel, {'new': sobjs})
             return fpath, sobjs
