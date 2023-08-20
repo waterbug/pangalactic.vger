@@ -500,7 +500,7 @@ class RepositoryService(ApplicationSession):
                              id=rep_file_id, name=rep_file_name,
                              user_file_name=fname, file_size=fsize,
                              create_datetime=dts, mod_datetime=dts)
-            vault_fname = rep_file.oid + '_' + fname
+            vault_fname = orb.get_vault_fname(rep_file)
             rep_file.url = os.path.join('vault://', vault_fname)
             orb.save([model, rep_file])
             channel = 'vger.channel.' + model.owner.id
@@ -569,7 +569,7 @@ class RepositoryService(ApplicationSession):
             orb.db.commit()
             orb.log.info(f'  RepresentationFile created: "{rep_file_name}"')
             orb.log.info(f'  of_object: "{rep_file.of_object.id}"')
-            vault_fname = rep_file.oid + '_' + fname
+            vault_fname = orb.get_vault_fname(rep_file)
             rep_file.url = os.path.join('vault://', vault_fname)
             # DocumentReference
             doc_ref_id = doc_id + '-ref-' + rel_obj.id
@@ -612,8 +612,8 @@ class RepositoryService(ApplicationSession):
             orb.log.info(f'  fname: {fname}')
             orb.log.info(f'  chunk size: {n}')
             # write to file
-            fpath = os.path.join(orb.vault, fname)
-            with open(fpath, 'ab') as f:
+            vault_fpath = os.path.join(orb.vault, fname)
+            with open(vault_fpath, 'ab') as f:
                 f.write(data)
             return seq
 
@@ -664,16 +664,16 @@ class RepositoryService(ApplicationSession):
                 orb.log.info(f'  user_file_name: {fname}')
                 orb.log.info(f'  chunk size: {chunk_size}')
                 # read from file
-                vault_fname = digital_file_oid + '_' + fname
-                fpath = os.path.join(orb.vault, vault_fname)
+                vault_fpath = orb.get_vault_fpath(digital_file)
                 fsize = digital_file.file_size
                 numchunks = math.ceil(fsize / chunk_size)
+                vault_fname = orb.get_vault_fname(digital_file)
                 chunked_data_fnames = [vault_fname + '_' + str(i)
                                        for i in range(numchunks)]
                 chunk_fpath0 = os.path.join(orb.vault, chunked_data_fnames[0])
                 if not os.path.exists(chunk_fpath0):
                     # create chunked data files ...
-                    vaultf = open(fpath, 'rb')
+                    vaultf = open(vault_fpath, 'rb')
                     for i, chunk in enumerate(iter(
                                     partial(vaultf.read, chunk_size), b'')):
                         chunk_fpath = os.path.join(orb.vault,
@@ -1935,8 +1935,7 @@ class RepositoryService(ApplicationSession):
                 if lom.has_files:
                     rfile = lom.has_files[0]
                     orb.log.info(f'  LOM file found: {rfile.user_file_name}')
-                    vault_fname = rfile.oid + '_' + rfile.user_file_name
-                    vault_fpath = os.path.join(orb.vault, vault_fname)
+                    vault_fpath = orb.get_vault_fpath(rfile)
                     data = get_lom_data(vault_fpath)
                     return get_optical_surface_names(data)
                 else:
@@ -1976,8 +1975,7 @@ class RepositoryService(ApplicationSession):
                 if lom.has_files:
                     rfile = lom.has_files[0]
                     orb.log.info(f'  LOM file found: {rfile.user_file_name}')
-                    vault_fname = rfile.oid + '_' + rfile.user_file_name
-                    vault_fpath = os.path.join(orb.vault, vault_fname)
+                    vault_fpath = orb.get_vault_fpath(rfile)
                     new, to_delete = extract_lom_structure(lom, vault_fpath)
                     if to_delete:
                         to_delete_ids = [o.id for o in to_delete]
