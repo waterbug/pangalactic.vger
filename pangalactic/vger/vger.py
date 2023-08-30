@@ -22,7 +22,12 @@ from autobahn.twisted.wamp import ApplicationSession
 from autobahn.wamp         import cryptosign
 from autobahn.wamp.types   import RegisterOptions
 
+# sets "orb" to uberorb.orb, so that
+# "from pangalactic.core import orb" imports p.core.uberorb.orb
+import pangalactic.core.set_uberorb
+
 from pangalactic.core                  import __version__
+from pangalactic.core                  import orb
 from pangalactic.core                  import (config, deleted, state,
                                                read_config, write_config,
                                                read_deleted, write_deleted,
@@ -52,7 +57,6 @@ from pangalactic.core.refdata          import ref_oids
 from pangalactic.core.test.utils       import (create_test_users,
                                                create_test_project)
 from pangalactic.core.utils.datetimes  import dtstamp, earlier
-from pangalactic.core.uberorb          import orb
 from pangalactic.vger.lom              import (get_lom_data,
                                                get_optical_surface_names,
                                                extract_lom_structure)
