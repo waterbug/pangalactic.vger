@@ -36,18 +36,13 @@ from pangalactic.core.access           import (get_perms, is_cloaked,
                                                is_global_admin, modifiables)
 from pangalactic.core.clone            import clone
 from pangalactic.core.mapping          import schema_maps
-from pangalactic.core.parametrics      import (componentz, systemz,
-                                               data_elementz, parameterz,
-                                               de_defz,
+from pangalactic.core.parametrics      import (data_elementz, parameterz,
                                                delete_parameter,
                                                delete_data_element,
                                                mode_defz,
-                                               parm_defz, parmz_by_dimz,
                                                rqt_allocz,
                                                save_data_elementz,
                                                save_parmz,
-                                               serialize_compz,
-                                               serialize_systemz,
                                                serialize_rqt_allocz,
                                                set_dval, set_pval)
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
@@ -2154,17 +2149,14 @@ class RepositoryService(ApplicationSession):
         def get_caches(oids=None):
             """
             Retrieves all related caches for the objects with the specified
-            oids (or the full caches if no oids are specified), which includes
-            the 'componentz', 'systemz', 'parm_defz', 'de_defz',
-            'parmz_by_dimz', and 'rqt_allocz' caches.
+            oids (or the full caches if no oids are specified), which so far
+            includes just the 'rqt_allocz' and 'allocz' caches.
 
             Keyword Args:
                 oids (iterable of str):  iterable of object oids
 
             Returns:
-                list:  Serialized 'componentz' and 'systemz' data sets plus the
-                    'parm_defz', 'de_defz', 'parmz_by_dimz', and 'rqt_allocz'
-                    caches.
+                list:  Serialized 'rqt_allocz' and 'allocz' caches.
             """
             orb.log.info('* [rpc] vger.get_caches() ...')
             # "allocz" cache maps usage oids to oids of reqts allocated to them
@@ -2176,16 +2168,9 @@ class RepositoryService(ApplicationSession):
                 else:
                     allocz[alloc[0]] = [rqt_oid]
             if oids:
-                return [serialize_compz({oid: componentz.get(oid) for oid in oids
-                                         if componentz.get(oid) is not None}),
-                        serialize_systemz(systemz),
-                        parm_defz, de_defz, parmz_by_dimz, 
-                        serialize_rqt_allocz(rqt_allocz), allocz]
+                return [serialize_rqt_allocz(rqt_allocz), allocz]
             # else get the full 'componentz' cache
-            return [serialize_compz(componentz),
-                    serialize_systemz(systemz),
-                    parm_defz, de_defz, parmz_by_dimz,
-                    serialize_rqt_allocz(rqt_allocz), allocz]
+            return [serialize_rqt_allocz(rqt_allocz), allocz]
 
         yield self.register(get_caches, 'vger.get_caches')
 
