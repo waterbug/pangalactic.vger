@@ -47,16 +47,47 @@ def get_LOM(data):
         a list of dicts, one for each surface, with the
         following keys:
 
-        ['surfacelabel', 'rdy', 'rdx', 'thi', 'map', 'mav', 'ape', 'k',
-        'surfacetype', 'coefs_note', 'coefs_vals', 'glass', 'rindex',
-        'refractmode', 'decenter_type', 'decenter_vals', 'return_surf',
-        'refrays', 'globalcoord_ref', 'globalcoord_xyz', 'globalcoord_abc',
-        'globalcoord_abc_note', 'globalcoord_ROT', 'dRR_dRBM', 'dFIR_dRBM',
-        'dWFE_dRBM', 'MASK_dRBM', 'dRR_dRK', 'dFIR_dRK', 'dWFE_dRK',
-        'MASK_dRK', 'dRR_dZFE', 'dFIR_dZFE', 'dWFE_dZFE', 'MASK_dZFE', 'Sag_m',
-        'Sag_mask', 'Sag_xy', 'dSag_dZFE_m']
+        ['surfacelabel', 'surfaceunits', 'rdy', 'rdx', 'k', 'prxy', 'thi',
+         'map', 'mav', 'mnr', 'ape_mask', 'ape_maskxy', 'ape_rad',
+         'ape_xy_edge', 'ape_xy_center', 'surfacetype', 'coefs_note',
+         'coefs_vals', 'glass', 'rindex', 'refractmode', 'decenter_type',
+         'decenter_vals', 'refrays', 'global_surfacelabel', 'local2global_4x4',
+         'global2local_4x4', 'dRR_dRBM', 'dFIR_dRBM', 'dWFE_dRBM', 'dRR_dRK',
+         'dFIR_dRK', 'dWFE_dRK', 'dSAG_dRK', 'dRR_dZFE', 'dFIR_dZFE',
+         'dWFE_dZFE', 'SAG_MASK', 'SAG_XY', 'SAG', 'dSAG_dZFE', 'dRMS_dRBM',
+         'dRMS_dRK', 'dRMS_dZFE']
     """
     return list(data["lomdata"]["LOM"])
+
+def get_surfaces_drms_drbm(data):
+    """
+    Return a dict mapping surface names to dicts of dRMS_dRBM worst-case
+    values for each degree of freedom (dx, dy, dz, rx, ry, rz).
+
+    Args:
+        data (dict): LOM data set read from .mat file
+
+    Return:
+        a dict of dicts:
+
+            {'surface_1' : {'dx' : dRMS_dRBM/dx,
+                            'dy' : dRMS_dRBM/dy,
+                            'dz' : dRMS_dRBM/dz,
+                            'rx' : dRMS_dRBM/rx,
+                            'ry' : dRMS_dRBM/ry,
+                            'rz' : dRMS_dRBM/rz},
+             'surface_2' : {'dx' : dRMS_dRBM/dx,
+                            ...},
+             ...}
+    """
+    surfaces = get_optical_surface_names(data)
+    lom = get_LOM(data)
+    comps = ['dx', 'dy', 'dz', 'rx', 'ry', 'rz']
+    d = {}
+    for i, surface in enumerate(surfaces):
+        drdr = lom[i]['dRMS_dRBM']
+        d[surface] = {comp : max(v) for v in enumerate(drdr)}
+    return d
 
 def extract_lom_structure(lom, fpath):
     """
