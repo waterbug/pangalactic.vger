@@ -53,6 +53,7 @@ from pangalactic.core.test.utils       import (create_test_users,
                                                create_test_project)
 from pangalactic.core.utils.datetimes  import dtstamp, earlier
 from pangalactic.vger.lom              import (get_lom_data,
+                                               get_lom_parm_data,
                                                get_optical_surface_names,
                                                extract_lom_structure)
 from pangalactic.vger.userdir          import search_ldap_directory
@@ -1920,19 +1921,19 @@ class RepositoryService(ApplicationSession):
             #     LOM Model (typically a project)
             # (2) the LOM Model has a single RepresentationFile, which is a
             #     Matlab file (.mat).
-            lom = orb.get(lom_oid)
-            if not lom:
+            LOM = orb.get(lom_oid)
+            if not LOM:
                 return "unknown model oid"
             userid = getattr(cb_details, 'caller_authid', '')
             user = orb.select('Person', id=userid)
             # get role assignments in the owner org for the LOM
             ras = orb.search_exact(cname='RoleAssignment',
                                    assigned_to=user,
-                                   role_assignment_context=lom.owner)
+                                   role_assignment_context=LOM.owner)
             # any role in the owner org is permitted access to the LOM data
             if ras or is_global_admin(user):
-                if lom.has_files:
-                    rfile = lom.has_files[0]
+                if LOM.has_files:
+                    rfile = LOM.has_files[0]
                     orb.log.info(f'  LOM file found: {rfile.user_file_name}')
                     vault_fpath = orb.get_vault_fpath(rfile)
                     data = get_lom_data(vault_fpath)
@@ -1948,8 +1949,7 @@ class RepositoryService(ApplicationSession):
 
         def get_lom_structure(lom_oid=None, cb_details=None):
             """
-            Get the structure and parameters of the specified Linear Optical
-            Model.
+            Get the assembly structure of the specified Linear Optical Model.
 
             Keyword Args:
                 lom_oid (str):  oid of the LOM's Model instance
@@ -1959,51 +1959,36 @@ class RepositoryService(ApplicationSession):
                 list of str
             """
             orb.log.info('* [rpc] vger.get_lom_structure() ...')
-            lom = orb.get(lom_oid)
-            if not lom:
-                return ("lom oid not found.", [])
+            LOM = orb.get(lom_oid)
+            if not LOM:
+                return ("LOM oid not found.", [])
             userid = getattr(cb_details, 'caller_authid', '')
             user = orb.select('Person', id=userid)
             # get role assignments in the owner org for the LOM
             ras = orb.search_exact(cname='RoleAssignment',
                                    assigned_to=user,
-                                   role_assignment_context=lom.owner)
+                                   role_assignment_context=LOM.owner)
             # any role in the owner org is permitted access to the LOM data
-            new, to_delete = [], []
+            new_objs = []
             if ras or is_global_admin(user):
-                if lom.has_files:
-                    rfile = lom.has_files[0]
+                if LOM.has_files:
+                    rfile = LOM.has_files[0]
                     orb.log.info(f'  LOM file found: {rfile.user_file_name}')
                     vault_fpath = orb.get_vault_fpath(rfile)
-                    new, to_delete = extract_lom_structure(lom, vault_fpath)
-                    if to_delete:
-                        to_delete_ids = [o.id for o in to_delete]
-                        orb.log.info(f'  items to delete: {to_delete_ids}')
-                        for obj in to_delete:
-                            # add oids of deleted to the 'deleted' cache
-                            deleted[obj.oid] = obj.id
-                        write_deleted(os.path.join(orb.home, 'deleted'))
-                        oids_deleted = [o.oid for o in to_delete]
-                        orb.delete(to_delete)
-                        for oid in oids_deleted:
-                            msg = 'publishing "deleted" on public channel.'
-                            orb.log.info(f'   {msg}')
-                            channel = 'vger.channel.public'
-                            self.publish(channel, {'deleted': oid})
-                        orb.log.info(f'  deleted: {oids_deleted}')
-                    if new:
-                        # publish "new" on owner channel
-                        channel_id = lom.owner.id
+                    new_objs = extract_lom_structure(LOM, vault_fpath)
+                    if new_objs:
+                        # publish "new" message on owner channel
+                        channel_id = LOM.owner.id
                         channel = 'vger.channel.' + channel_id
-                        n = len(new)
+                        n = len(new_objs)
                         txt = f'publishing {n} items on channel "{channel_id}"'
                         orb.log.info(f'   + {txt}')
-                        new_ids = [o.id for o in new]
+                        new_ids = [o.id for o in new_objs]
                         orb.log.debug('     new object ids:')
                         for obj_id in new_ids:
                             orb.log.debug(f'     - {obj_id}')
-                        ser_new = serialize(orb, new)
-                        self.publish(channel, {'new': ser_new})
+                        ser_objs = serialize(orb, new_objs)
+                        self.publish(channel, {'new': ser_objs})
                     return ('success', lom_oid)
                 else:
                     return ('no LOM files found', '')
@@ -2012,6 +1997,56 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_lom_structure,
                             'vger.get_lom_structure',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def get_lom_parms(lom_oid=None, cb_details=None):
+            """
+            Get the sensitivity parameters of the specified Linear Optical
+            Model.
+
+            Keyword Args:
+                lom_oid (str):  oid of the LOM's Model instance
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                list of str
+            """
+            orb.log.info('* [rpc] vger.get_lom_parms() ...')
+            LOM = orb.get(lom_oid)
+            if not LOM:
+                return (f'LOM oid "{lom_oid}" not found.', '')
+            userid = getattr(cb_details, 'caller_authid', '')
+            user = orb.select('Person', id=userid)
+            # get role assignments in the owner org for the LOM
+            ras = orb.search_exact(cname='RoleAssignment',
+                                   assigned_to=user,
+                                   role_assignment_context=LOM.owner)
+            # any role in the owner org is permitted access to the LOM data
+            lom_parms = {}
+            if ras or is_global_admin(user):
+                if LOM.has_files:
+                    rfile = LOM.has_files[0]
+                    orb.log.info(f'  LOM file found: {rfile.user_file_name}')
+                    vault_fpath = orb.get_vault_fpath(rfile)
+                    lom_parms = get_lom_parm_data(vault_fpath)
+                    # only for intensive debugging:
+                    # orb.log.debug(f'  parm data: {lom_parms}')
+                    # publish lom_parms on owner channel
+                    channel_id = LOM.owner.id
+                    channel = 'vger.channel.' + channel_id
+                    txt = f'publishing LOM data on channel "{channel_id}"'
+                    orb.log.info(f'   + {txt}')
+                    self.publish(channel, {'LOM parms': lom_parms})
+                    return ('success', lom_parms)
+                else:
+                    orb.log.info('  LOM file not found.')
+                    return ('no LOM files found', '')
+            else:
+                orb.log.info('  unauthorized.')
+                return ('unauthorized', '')
+
+        yield self.register(get_lom_parms,
+                            'vger.get_lom_parms',
                             RegisterOptions(details_arg='cb_details'))
 
         def search_exact(**kw):
