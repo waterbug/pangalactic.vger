@@ -158,9 +158,9 @@ def extract_lom_structure(LOM, fpath):
                                  create_datetime=NOW, mod_datetime=NOW,
                                  creator=user, modifier=user)
                 new_objs.append(opt_comp)
-                oc_ref_des = f'oc-{i:03}'
+                oc_ref_des = f'oc-{i:02}'
                 oc_acu_id = f'{system.id}-{oc_ref_des}'
-                oc_acu_name = f'{system.id}-{opt_comp.id}-{i:03}'
+                oc_acu_name = f'{system.id}-{opt_comp.id}-{i:02}'
                 oc_usage = clone('Acu',
                             assembly=system, component=opt_comp,
                             id=oc_acu_id, name=oc_acu_name,
