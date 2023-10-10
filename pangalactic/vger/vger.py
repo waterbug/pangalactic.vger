@@ -1799,6 +1799,8 @@ class RepositoryService(ApplicationSession):
             project = orb.get(project_oid)
             if not project:
                 return 'no such project'
+            if not project_oid in mode_defz:
+                return f'no modes defined for {project.id}'
             pname = project.id
             # link retrieved for debug logging -- this can be removed to
             # improve performance after initial testing ...
@@ -1868,6 +1870,8 @@ class RepositoryService(ApplicationSession):
                 return 'unknown link'
             if not comp:
                 return 'unknown comp'
+            if not project_oid in mode_defz:
+                return f'no modes defined for {project.id}'
             if link_oid not in mode_defz[project_oid]['components']:
                 return 'link not in comp section'
             if comp_oid not in mode_defz[project_oid]['components'][link_oid]:
