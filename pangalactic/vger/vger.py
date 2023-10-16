@@ -37,8 +37,10 @@ from pangalactic.core.access           import (get_perms, is_cloaked,
 from pangalactic.core.clone            import clone
 from pangalactic.core.mapping          import schema_maps
 from pangalactic.core.parametrics      import (data_elementz, parameterz,
-                                               delete_parameter,
+                                               add_data_element,
+                                               add_parameter,
                                                delete_data_element,
+                                               delete_parameter,
                                                mode_defz,
                                                rqt_allocz,
                                                save_data_elementz,
@@ -1588,8 +1590,6 @@ class RepositoryService(ApplicationSession):
         yield self.register(sync_project, 'vger.sync_project',
                             RegisterOptions(details_arg='cb_details'))
 
-        # NOTE: this rpc is currently unnecessary, since parameters are added
-        # and/or set by object modifications, which are handled by vger.save()
         def set_parameter(oid=None, pid=None, value=None, cb_details=None):
             """
             Set a parameter value.
@@ -1617,9 +1617,31 @@ class RepositoryService(ApplicationSession):
         yield self.register(set_parameter, 'vger.set_parameter',
                             RegisterOptions(details_arg='cb_details'))
 
-        # NOTE: this rpc is necessary because the serialization format allows
-        # data to be incomplete, so absence does not imply deletion (and anyway
-        # it is better to have an positive assertion for removals)
+        def add_parm(oid=None, pid=None, cb_details=None):
+            """
+            Add a parameter to an object.
+
+            Keyword Args:
+                oid (str):  oid of the object
+                pid (str):  parameter id
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                result (str):  message about the result
+            """
+            argstr = f'oid={oid}, pid={pid}'
+            orb.log.info(f'* [rpc] add_parm({argstr})')
+            # For now, just publish on public channel
+            add_parameter(oid, pid)
+            channel = 'vger.channel.public'
+            orb.log.info(f'  + publishing "parm added" on "{channel}" ...')
+            self.publish(channel,
+                         {'parm added': [oid, pid]})
+            return f'parameter "{pid}" added to object with oid "{oid}".'
+
+        yield self.register(add_parm, 'vger.add_parm',
+                            RegisterOptions(details_arg='cb_details'))
+
         def del_parm(oid=None, pid=None, cb_details=None):
             """
             Remove a parameter from an object.
@@ -1680,9 +1702,31 @@ class RepositoryService(ApplicationSession):
         yield self.register(set_data_elements, 'vger.set_data_elements',
                             RegisterOptions(details_arg='cb_details'))
 
-        # NOTE: this rpc is necessary because the serialization format allows
-        # data to be incomplete, so absence does not imply deletion (and anyway
-        # it is better to have an positive assertion for removals)
+        def add_de(oid=None, deid=None, cb_details=None):
+            """
+            Add a data element to an object.
+
+            Keyword Args:
+                oid (str):  oid of the object
+                deid (str):  data element id
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                result (str):  message about the result
+            """
+            argstr = f'oid={oid}, deid={deid}'
+            orb.log.info(f'* [rpc] add_de({argstr})')
+            # For now, just publish on public channel
+            add_data_element(oid, deid)
+            channel = 'vger.channel.public'
+            orb.log.info(f'  + publishing "de added" on "{channel}" ...')
+            self.publish(channel,
+                         {'de added': [oid, deid]})
+            return f'data element "{deid}" added to object with oid "{oid}".'
+
+        yield self.register(add_de, 'vger.add_de',
+                            RegisterOptions(details_arg='cb_details'))
+
         def del_de(oid=None, deid=None, cb_details=None):
             """
             Remove a data element from an object.
@@ -2208,7 +2252,6 @@ class RepositoryService(ApplicationSession):
                     allocz[alloc[0]] = [rqt_oid]
             if oids:
                 return [serialize_rqt_allocz(rqt_allocz), allocz]
-            # else get the full 'componentz' cache
             return [serialize_rqt_allocz(rqt_allocz), allocz]
 
         yield self.register(get_caches, 'vger.get_caches')
