@@ -3,25 +3,29 @@ package:
   version: "4.0.dev0"
 
 source:
-        path: /home/waterbug/gitlab/pangalactic.vger
+        path: /home/waterbug/clones/pangalactic.vger
 
 requirements:
   build:
-    - python
+    - python {{PY_VER}}
     - setuptools
 
   run:
-    - pangalactic.core=4.0.dev0
     - autobahn
-    - pyopenssl
-    - python >=2.7
-    - service_identity
+    - openldap
+    - pangalactic.core >=4.0.dev0
+    - postgresql
+    - psycopg2
+    # pynacl is needed for autobahn to support cryptosign auth
+    - pynacl
+    - pyopenssl >=22.1.0
+    - python {{PY_VER}}
+    - python-ldap
+    - scipy
     - twisted
-    - zope
-    - zope.interface
 
 about:
   # home: https://pangalactic.us
-  license: NASA
+  # license: NASA
   # license_file: LICENSE
 
