@@ -1,6 +1,6 @@
 package:
   name: pangalactic.vger
-  version: "4.0.dev3"
+  version: "4.0.dev4"
 
 source:
         path: /home/waterbug/clones/pangalactic.vger
@@ -13,7 +13,7 @@ requirements:
   run:
     - autobahn
     - openldap
-    - pangalactic.core >=4.0.dev3
+    - pangalactic.core >=4.0.dev4
     - postgresql
     - psycopg2
     # pynacl is needed for autobahn to support cryptosign auth
