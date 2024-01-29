@@ -2678,18 +2678,23 @@ if __name__ == '__main__':
     realm = 'pangalactic-services'
     # write the new config file
     write_config(os.path.join(home, 'config'))
-    # load crossbar host certificate (default: file 'server_cert.pem' in
-    # home directory)
-    cert_fname = 'server_cert.pem'
-    cert_fpath = os.path.join(home, cert_fname)
-    cert_content = crypto.load_certificate(crypto.FILETYPE_PEM,
-                                           str(open(cert_fpath, 'r').read()))
-    try:
-        tls_options = CertificateOptions(
-                    trustRoot=OpenSSLCertificateAuthorities([cert_content]))
-    except:
-        print("Could not get tls_options from server cert -- exiting.")
-        sys.exit()
+    if config.get('self_signed_cert'):
+        # crossbar is using a self-signed cert, so it must be used in creating
+        # CertificateOptions (default: file 'server_cert.pem' in home
+        # directory)
+        cert_fname = 'server_cert.pem'
+        cert_fpath = os.path.join(home, cert_fname)
+        cert_content = crypto.load_certificate(crypto.FILETYPE_PEM,
+                                               str(open(cert_fpath, 'r').read()))
+        try:
+            tls_options = CertificateOptions(
+                        trustRoot=OpenSSLCertificateAuthorities([cert_content]))
+        except:
+            print("Could not find self-signed cert -- exiting.")
+            sys.exit()
+    else:
+        # crossbar is using a CA-signed cert ...
+        tls_options = CertificateOptions()
     comp = Component(session_factory=RepositoryService,
                      transports=[{
                         "type": "websocket",
