@@ -1799,6 +1799,8 @@ class RepositoryService(ApplicationSession):
                                    assigned_to=user,
                                    role_assignment_context=project)
             role_names = set([ra.assigned_role.name for ra in ras])
+            # updating the mode definitions for an entire project requires
+            # high-level authorization, unlike atomic updates ...
             if ((set(['Administrator', 'Systems Engineer', 'Lead Engineer'])
                  & role_names) or is_global_admin(user)):
                 mode_data = yaml.safe_load(data)
@@ -1843,28 +1845,33 @@ class RepositoryService(ApplicationSession):
             project = orb.get(project_oid)
             if not project:
                 return 'no such project'
-            if not project_oid in mode_defz:
-                return f'no modes defined for {project.id}'
             pname = project.id
             # link retrieved for debug logging -- this can be removed to
             # improve performance after initial testing ...
             link = orb.get(link_oid)
             if not link:
                 return 'unknown link'
-            if link_oid not in mode_defz[project_oid]['systems']:
-                return 'link not in system section'
             orb.log.info(f'        sys mode datum received for {pname}')
             orb.log.info('============================================')
             orb.log.info(f'system:  {link.name}')
             orb.log.info(f'mode:    {mode}')
             orb.log.info(f'value:   {value}')
             orb.log.info('============================================')
-            ras = orb.search_exact(cname='RoleAssignment',
-                                   assigned_to=user,
-                                   role_assignment_context=project)
-            role_names = set([ra.assigned_role.name for ra in ras])
-            if ((set(['Administrator', 'Systems Engineer', 'Lead Engineer'])
-                 & role_names) or is_global_admin(user)):
+            # check for user authorization to edit link component
+            perms = []
+            if hasattr(link, 'component'):
+                perms = get_perms(link.component, user)
+            elif hasattr(link, 'system'):
+                perms = get_perms(link.system, user)
+            # authorization is based on the "add docs" permission, since mode
+            # definitions are essentially documentation and do not alter the
+            # item
+            if 'add docs' in perms:
+                if not (project_oid in mode_defz):
+                    mode_defz[project_oid] = dict(modes={}, systems={},
+                                                  components={})
+                if link_oid not in mode_defz[project_oid]['systems']:
+                    mode_defz[project_oid]['systems'][link_oid] = {}
                 mode_defz[project_oid]['systems'][link_oid][mode] = value
                 md_dts = str(dtstamp())
                 state['mode_defz_dts'] = md_dts
@@ -1914,12 +1921,6 @@ class RepositoryService(ApplicationSession):
                 return 'unknown link'
             if not comp:
                 return 'unknown comp'
-            if not project_oid in mode_defz:
-                return f'no modes defined for {project.id}'
-            if link_oid not in mode_defz[project_oid]['components']:
-                return 'link not in comp section'
-            if comp_oid not in mode_defz[project_oid]['components'][link_oid]:
-                return 'comp not in comp section'
             orb.log.info(f'        comp mode datum received for {pname}')
             orb.log.info('============================================')
             orb.log.info(f'system:     {link.name}')
@@ -1927,13 +1928,24 @@ class RepositoryService(ApplicationSession):
             orb.log.info(f'mode:       {mode}')
             orb.log.info(f'value:      {value}')
             orb.log.info('============================================')
-            ras = orb.search_exact(cname='RoleAssignment',
-                                   assigned_to=user,
-                                   role_assignment_context=project)
-            role_names = set([ra.assigned_role.name for ra in ras])
-            if ((set(['Administrator', 'Systems Engineer', 'Lead Engineer'])
-                 & role_names)
-                or is_global_admin(user)):
+            perms = []
+            if hasattr(comp, 'component'):
+                perms = get_perms(link.component, user)
+            elif hasattr(comp, 'system'):
+                perms = get_perms(link.system, user)
+            # authorization is based on the "add docs" permission, since mode
+            # definitions are essentially documentation and do not alter the
+            # item
+            if 'add docs' in perms:
+                if not (project_oid in mode_defz):
+                    mode_defz[project_oid] = dict(modes={}, systems={},
+                                                  components={})
+                if link_oid not in mode_defz[project_oid]['components']:
+                    mode_defz[project_oid]['components'][link_oid] = {}
+                if comp_oid not in mode_defz[project_oid]['components'][
+                                                                link_oid]:
+                    mode_defz[project_oid]['components'][link_oid][
+                                                                comp_oid] = {}
                 mode_defz[project_oid]['components'][link_oid][comp_oid][
                                                                 mode] = value
                 md_dts = str(dtstamp())
