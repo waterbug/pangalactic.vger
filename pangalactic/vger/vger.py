@@ -1930,9 +1930,9 @@ class RepositoryService(ApplicationSession):
             orb.log.info('============================================')
             perms = []
             if hasattr(comp, 'component'):
-                perms = get_perms(link.component, user)
+                perms = get_perms(comp.component, user)
             elif hasattr(comp, 'system'):
-                perms = get_perms(link.system, user)
+                perms = get_perms(comp.system, user)
             # authorization is based on the "add docs" permission, since mode
             # definitions are essentially documentation and do not alter the
             # item
