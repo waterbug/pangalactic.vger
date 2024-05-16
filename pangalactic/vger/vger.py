@@ -44,6 +44,7 @@ from pangalactic.core.parametrics      import (data_elementz, parameterz,
                                                mode_defz,
                                                rqt_allocz,
                                                save_data_elementz,
+                                               save_mode_defz,
                                                save_parmz,
                                                serialize_rqt_allocz,
                                                set_dval, set_pval)
@@ -258,6 +259,7 @@ class RepositoryService(ApplicationSession):
         write_state(os.path.join(orb.home, 'state'))
         save_parmz(orb.home)
         save_data_elementz(orb.home)
+        save_mode_defz(orb.home)
         self.leave(reason="shut down")
         self.disconnect()
 
