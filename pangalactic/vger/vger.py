@@ -1592,31 +1592,47 @@ class RepositoryService(ApplicationSession):
         yield self.register(sync_project, 'vger.sync_project',
                             RegisterOptions(details_arg='cb_details'))
 
-        def set_parameter(oid=None, pid=None, value=None, cb_details=None):
+        def set_parameters(parms=None, cb_details=None):
             """
-            Set a parameter value.
+            Set a set of parameter values for a set of objects
 
             Keyword Args:
-                oid (str):  oid of the parent object
-                pid (str):  parameter id
-                value (str):  string representation of the value
+                parms (dict):  dict of parameters to update, in the format of
+                    the parameterz cache dict
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
                 result (str):  'success'
             """
-            # argstr = f'oid={oid}, pid={pid}, value={value}'
-            # orb.log.info(f'* [rpc] set_parameter({argstr})')
+            # args = f'parms={parms}'
+            # orb.log.info(f'* [rpc] set_parameters({args})')
             # For now, just publish on public channel
-            set_pval(oid, pid, value)
-            channel = 'vger.channel.public'
-            # orb.log.info(f'  + publishing parameter on "{channel}" ...')
-            self.publish(channel,
-                         {'parameter set':
-                          [oid, pid, value]})
-            return 'success'
+            if not parms or not isinstance(parms, dict):
+                return 'failure: bad data format'
+            userid = getattr(cb_details, 'caller_authid', 'unknown')
+            user_obj = orb.select('Person', id=userid)
+            parms_set = {}
+            try:
+                for oid, parmdict in parms.items():
+                    obj = orb.get(oid)
+                    perms = get_perms(obj, user_obj)
+                    if "modify" in perms:
+                        for pid, value in parmdict.items():
+                            set_pval(oid, pid, value)
+                    parms_set[oid] = parmdict
+                if parms_set:
+                    channel = 'vger.channel.public'
+                    # publish on public channel
+                    orb.log.info('  + publishing parameters to "public" ...')
+                    self.publish(channel,
+                                 {'parameters set': parms_set})
+                    return 'success'
+                else:
+                    return 'failure: not authorized'
+            except:
+                return 'failure: exception'
 
-        yield self.register(set_parameter, 'vger.set_parameter',
+        yield self.register(set_parameters, 'vger.set_parameters',
                             RegisterOptions(details_arg='cb_details'))
 
         def add_parm(oid=None, pid=None, cb_details=None):
