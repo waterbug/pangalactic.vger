@@ -1691,7 +1691,8 @@ class RepositoryService(ApplicationSession):
 
             Keyword Args:
                 des (dict):  dict of data elements to update, in the format of
-                    the data_elementz cache dict
+                    the data_elementz cache dict --
+                    {oid: {deid: value}}
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
@@ -1768,6 +1769,59 @@ class RepositoryService(ApplicationSession):
             return f'data element "{deid}" removed from object "{oid}".'
 
         yield self.register(del_de, 'vger.del_de',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def set_properties(props=None, cb_details=None):
+            """
+            Set property (parameter, data element, or attribute) values. Note
+            that any included parameter values must be expressed in base units.
+
+            Keyword Args:
+                props (dict):  dict of properties, in the format
+                    {oid: {property_id: value}}
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Returns:
+                result (str):  'success'
+            """
+            if not props or not isinstance(props, dict):
+                return 'failure'
+            userid = getattr(cb_details, 'caller_authid', 'unknown')
+            user_obj = orb.select('Person', id=userid)
+            prop_mods = {}
+            prop_mod_fails = {}
+            try:
+                for oid, prop_dict in props.items():
+                    prop_mods[oid] = {}
+                    prop_mod_fails[oid] = {}  
+                    obj = orb.get(oid)
+                    perms = get_perms(obj, user_obj)
+                    if "modify" in perms:
+                        for prop_id, value in prop_dict.items():
+                            status = orb.set_prop_val(oid, prop_id, value)
+                            if status == 'succeeded':
+                                prop_mods[oid][prop_id] = value
+                            else:
+                                prop_mod_fails[oid][prop_id] = status
+                oids = list(prop_mods)
+                mod_dt = dtstamp()
+                mod_dt_str = str(mod_dt)
+                if oids:
+                    objs = orb.get(oids=oids)
+                    if objs:
+                        for obj in objs:
+                            obj.mod_datetime = mod_dt
+                        orb.db.commit()
+                channel = 'vger.channel.public'
+                # publish on public channel
+                # orb.log.info('  + publishing properties to "public" ...')
+                self.publish(channel, {'properties set':
+                                       (prop_mods, mod_dt_str)})
+                return 'success'
+            except:
+                return 'failure'
+
+        yield self.register(set_properties, 'vger.set_properties',
                             RegisterOptions(details_arg='cb_details'))
 
         def get_mode_defs():
