@@ -1492,8 +1492,8 @@ class RepositoryService(ApplicationSession):
                     [5]:  parameter data for all project-owned objects
                     [6]:  data element data for all objs requested
             """
-            orb.log.info('* [rpc] vger.sync_project() ...')
-            orb.log.info('   project oid: {}'.format(str(project_oid)))
+            argstr = f'project_oid={project_oid}'
+            orb.log.info(f'* [rpc] vger.sync_project({argstr}) ...')
             userid = getattr(cb_details, 'caller_authid', '')
             if userid:
                 user = orb.select('Person', id=userid)
@@ -1604,8 +1604,8 @@ class RepositoryService(ApplicationSession):
             Returns:
                 result (str):  'success'
             """
-            # args = f'parms={parms}'
-            # orb.log.info(f'* [rpc] set_parameters({args})')
+            argstr = f'parms={parms}'
+            orb.log.info(f'* [rpc] set_parameters({argstr})')
             # For now, just publish on public channel
             if not parms or not isinstance(parms, dict):
                 return 'failure: bad data format'
@@ -1698,6 +1698,8 @@ class RepositoryService(ApplicationSession):
             Returns:
                 result (str):  'success'
             """
+            argstr = f'des={des}'
+            orb.log.info(f'* [rpc] set_data_elements({argstr})')
             if not des or not isinstance(des, dict):
                 return 'failure'
             userid = getattr(cb_details, 'caller_authid', 'unknown')
@@ -1784,6 +1786,8 @@ class RepositoryService(ApplicationSession):
             Returns:
                 result (str):  'success'
             """
+            argstr = f'props={props}'
+            orb.log.info(f'* [rpc] set_properties({argstr})')
             if not props or not isinstance(props, dict):
                 return 'failure'
             userid = getattr(cb_details, 'caller_authid', 'unknown')
@@ -1832,6 +1836,7 @@ class RepositoryService(ApplicationSession):
                 data (tuple of str):  [0] last-modified datetime stamp, [1]
                     serialized (yaml) mode_defz cache
             """
+            orb.log.info('* [rpc] get_mode_defs()')
             data = yaml.safe_dump(mode_defz, default_flow_style=False)
             if not state.get('mode_defz_dts'):
                 state['mode_defz_dts'] = str(dtstamp())
@@ -1852,7 +1857,8 @@ class RepositoryService(ApplicationSession):
             Returns:
                 dts (str):  stringified datetime stamp
             """
-            orb.log.info('* [rpc] vger.update_mode_defs() ...')
+            argstr = f'project_oid={project_oid}, data={data}'
+            orb.log.info(f'* [rpc] vger.update_mode_defs({argstr}) ...')
             userid = getattr(cb_details, 'caller_authid', '')
             user = orb.select('Person', id=userid)
             # get role assignments in project
@@ -2047,7 +2053,8 @@ class RepositoryService(ApplicationSession):
             Returns:
                 list of str
             """
-            orb.log.info('* [rpc] vger.get_lom_surface_names() ...')
+            argstr = f'lom_oid={lom_oid}'
+            orb.log.info(f'* [rpc] vger.get_lom_surface_names({argstr}) ...')
             # initial assumptions:
             # (1) the owner of the optical system spec is also the owner of the
             #     LOM Model (typically a project)
@@ -2090,7 +2097,8 @@ class RepositoryService(ApplicationSession):
             Returns:
                 list of str
             """
-            orb.log.info('* [rpc] vger.get_lom_structure() ...')
+            argstr = f'lom_oid={lom_oid}'
+            orb.log.info(f'* [rpc] vger.get_lom_structure({argstr}) ...')
             LOM = orb.get(lom_oid)
             if not LOM:
                 return ("LOM oid not found.", [])
@@ -2143,7 +2151,8 @@ class RepositoryService(ApplicationSession):
             Returns:
                 list of str
             """
-            orb.log.info('* [rpc] vger.get_lom_parms() ...')
+            argstr = f'lom_oid={lom_oid}'
+            orb.log.info(f'* [rpc] vger.get_lom_parms({argstr}) ...')
             LOM = orb.get(lom_oid)
             if not LOM:
                 return (f'LOM oid "{lom_oid}" not found.', '')
