@@ -778,7 +778,7 @@ class RepositoryService(ApplicationSession):
                 if obj_in_repo:
                     obj_id = obj_in_repo.id
                     perms = get_perms(obj_in_repo, user=user_obj)
-                    orb.log.info(f'  - perms: {perms} | id: "{obj_id}"')
+                    # orb.log.debug(f'  - perms: {perms} | id: "{obj_id}"')
                     if 'modify' in perms:
                         authorized[oid] = so
             # instances of classes which anyone can modify
@@ -1621,6 +1621,7 @@ class RepositoryService(ApplicationSession):
                             set_pval(oid, pid, value)
                     parms_set[oid] = parmdict
                 if parms_set:
+                    state['parmz_dts'] = str(dtstamp())
                     channel = 'vger.channel.public'
                     # publish on public channel
                     orb.log.info('  + publishing parameters to "public" ...')
@@ -1651,6 +1652,7 @@ class RepositoryService(ApplicationSession):
             orb.log.info(f'* [rpc] add_parm({argstr})')
             # For now, just publish on public channel
             add_parameter(oid, pid)
+            state['parmz_dts'] = str(dtstamp())
             channel = 'vger.channel.public'
             orb.log.info(f'  + publishing "parm added" on "{channel}" ...')
             self.publish(channel,
@@ -1676,6 +1678,7 @@ class RepositoryService(ApplicationSession):
             orb.log.info(f'* [rpc] del_parm({argstr})')
             # For now, just publish on public channel
             delete_parameter(oid, pid)
+            state['parmz_dts'] = str(dtstamp())
             channel = 'vger.channel.public'
             orb.log.info(f'  + publishing "parm del" on "{channel}" ...')
             self.publish(channel,
@@ -1816,6 +1819,7 @@ class RepositoryService(ApplicationSession):
                         for obj in objs:
                             obj.mod_datetime = mod_dt
                         orb.db.commit()
+                state['parmz_dts'] = str(dtstamp())
                 channel = 'vger.channel.public'
                 # publish on public channel
                 # orb.log.info('  + publishing properties to "public" ...')
@@ -1857,6 +1861,8 @@ class RepositoryService(ApplicationSession):
             Returns:
                 dts (str):  stringified datetime stamp
             """
+            # NOTE: it is not necessary to serialized mode defs data -- it
+            # consists completely of primitive types.
             argstr = f'project_oid={project_oid}, data={data}'
             orb.log.info(f'* [rpc] vger.update_mode_defs({argstr}) ...')
             userid = getattr(cb_details, 'caller_authid', '')
@@ -1881,7 +1887,7 @@ class RepositoryService(ApplicationSession):
             # high-level authorization, unlike atomic updates ...
             if ((set(['Administrator', 'Systems Engineer', 'Lead Engineer'])
                  & role_names) or is_global_admin(user)):
-                mode_data = yaml.safe_load(data)
+                mode_data = data
                 if project_oid in mode_defz:
                     del mode_defz[project_oid]
                 mode_defz[project_oid] = mode_data
@@ -2349,7 +2355,7 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_caches, 'vger.get_caches')
 
-        def get_parmz(oids=None):
+        def get_parmz(oids=None, dts=None):
             """
             Retrieves all cached parameter values for the specified oids, or
             if None, for all the oids in the db.
@@ -2360,11 +2366,16 @@ class RepositoryService(ApplicationSession):
             Returns:
                 dict:  parameterz data.
             """
-            orb.log.info('* [rpc] vger.get_parmz() ...')
-            if oids:
-                return {oid: parameterz.get(oid) for oid in oids}
+            orb.log.info(f'* [rpc] vger.get_parmz(oids={oids}, dts={dts})')
+            srv_dts = state.get('parmz_dts')
+            if dts == srv_dts:
+                orb.log.debug('  up to date -- nothing returned')
+                return {}
             else:
-                return parameterz
+                if oids:
+                    return srv_dts, {oid: parameterz.get(oid) for oid in oids}
+                else:
+                    return srv_dts, parameterz
 
         yield self.register(get_parmz, 'vger.get_parmz')
 
