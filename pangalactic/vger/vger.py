@@ -2355,7 +2355,7 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_caches, 'vger.get_caches')
 
-        def get_parmz(oids=None, dts=None):
+        def get_parmz(oids=None):
             """
             Retrieves all cached parameter values for the specified oids, or
             if None, for all the oids in the db.
@@ -2366,16 +2366,11 @@ class RepositoryService(ApplicationSession):
             Returns:
                 dict:  parameterz data.
             """
-            orb.log.info(f'* [rpc] vger.get_parmz(oids={oids}, dts={dts})')
-            srv_dts = state.get('parmz_dts')
-            if dts == srv_dts:
-                orb.log.debug('  up to date -- nothing returned')
-                return {}
+            orb.log.info(f'* [rpc] vger.get_parmz(oids={oids})')
+            if oids:
+                return {oid: parameterz.get(oid) for oid in oids}
             else:
-                if oids:
-                    return srv_dts, {oid: parameterz.get(oid) for oid in oids}
-                else:
-                    return srv_dts, parameterz
+                return parameterz
 
         yield self.register(get_parmz, 'vger.get_parmz')
 
