@@ -1855,13 +1855,13 @@ class RepositoryService(ApplicationSession):
 
             Keyword Args:
                 project_oid (str):  oid of the project
-                data (str):  serialized mode data for the project
+                data (str):  mode data for the project
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
                 dts (str):  stringified datetime stamp
             """
-            # NOTE: it is not necessary to serialized mode defs data -- it
+            # NOTE: it is NOT necessary to serialize mode defs data -- it
             # consists completely of primitive types.
             argstr = f'project_oid={project_oid}, data={data}'
             orb.log.info(f'* [rpc] vger.update_mode_defs({argstr}) ...')
@@ -1885,20 +1885,22 @@ class RepositoryService(ApplicationSession):
             role_names = set([ra.assigned_role.name for ra in ras])
             # updating the mode definitions for an entire project requires
             # high-level authorization, unlike atomic updates ...
+            # ============================================================
+            # TODO: allow discipline engineers add subsystems to mode_defz
+            # if they are defining modes at component level
+            # ============================================================
             if ((set(['Administrator', 'Systems Engineer', 'Lead Engineer'])
                  & role_names) or is_global_admin(user)):
-                mode_data = data
                 if project_oid in mode_defz:
                     del mode_defz[project_oid]
-                mode_defz[project_oid] = mode_data
+                mode_defz[project_oid] = data
                 md_dts = str(dtstamp())
                 state['mode_defz_dts'] = md_dts
                 msg = 'publishing "new mode defs" on public channel ...'
                 orb.log.info(f'    {msg}')
                 channel = 'vger.channel.public'
-                ser_mode_defs = json.dumps(mode_defz)
                 self.publish(channel, {'new mode defs':
-                                       (md_dts, ser_mode_defs, userid)})
+                                       (md_dts, project_oid, data, userid)})
                 return md_dts
             else:
                 return 'unauthorized'
