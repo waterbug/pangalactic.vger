@@ -1866,7 +1866,7 @@ class RepositoryService(ApplicationSession):
             argstr = f'project_oid={project_oid}, data={data}'
             orb.log.info(f'* [rpc] vger.update_mode_defs({argstr}) ...')
             userid = getattr(cb_details, 'caller_authid', '')
-            user = orb.select('Person', id=userid)
+            orb.log.info(f'        called by user {userid}')
             # get role assignments in project
             project = orb.get(project_oid)
             if not project:
@@ -1879,31 +1879,24 @@ class RepositoryService(ApplicationSession):
             # orb.log.info('============================================')
             # orb.log.info(f'{data}')
             # orb.log.info('============================================')
-            ras = orb.search_exact(cname='RoleAssignment',
-                                   assigned_to=user,
-                                   role_assignment_context=project)
-            role_names = set([ra.assigned_role.name for ra in ras])
-            # updating the mode definitions for an entire project requires
-            # high-level authorization, unlike atomic updates ...
             # ============================================================
-            # TODO: allow discipline engineers add subsystems to mode_defz
-            # if they are defining modes at component level
+            # discipline engineers must be allowed to add subsystems to
+            # mode_defz if they are defining modes at component level; hence
+            # all users with access to the project are authorized ...
+            # (restrictions can be added but would be very complex to
+            # implement ...)
             # ============================================================
-            if ((set(['Administrator', 'Systems Engineer', 'Lead Engineer'])
-                 & role_names) or is_global_admin(user)):
-                if project_oid in mode_defz:
-                    del mode_defz[project_oid]
-                mode_defz[project_oid] = data
-                md_dts = str(dtstamp())
-                state['mode_defz_dts'] = md_dts
-                msg = 'publishing "new mode defs" on public channel ...'
-                orb.log.info(f'    {msg}')
-                channel = 'vger.channel.public'
-                self.publish(channel, {'new mode defs':
-                                       (md_dts, project_oid, data, userid)})
-                return md_dts
-            else:
-                return 'unauthorized'
+            if project_oid in mode_defz:
+                del mode_defz[project_oid]
+            mode_defz[project_oid] = data
+            md_dts = str(dtstamp())
+            state['mode_defz_dts'] = md_dts
+            msg = 'publishing "new mode defs" on public channel ...'
+            orb.log.info(f'    {msg}')
+            channel = 'vger.channel.public'
+            self.publish(channel, {'new mode defs':
+                                   (md_dts, project_oid, data, userid)})
+            return md_dts
 
         yield self.register(update_mode_defs, 'vger.update_mode_defs',
                             RegisterOptions(details_arg='cb_details'))
