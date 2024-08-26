@@ -43,9 +43,6 @@ from pangalactic.core.parametrics      import (data_elementz, parameterz,
                                                delete_parameter,
                                                mode_defz,
                                                rqt_allocz,
-                                               save_data_elementz,
-                                               save_mode_defz,
-                                               save_parmz,
                                                serialize_rqt_allocz,
                                                set_dval, set_pval)
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
@@ -254,12 +251,12 @@ class RepositoryService(ApplicationSession):
 
     def shutdown(self):
         """
-        Write the server's "state" file in preparation for exit.
+        Write the server's "state" file and save all caches in preparation for
+        exit.
         """
         write_state(os.path.join(orb.home, 'state'))
-        save_parmz(orb.home)
-        save_data_elementz(orb.home)
-        save_mode_defz(orb.home)
+        # orb.save_caches saves *all* caches ...
+        orb.save_caches()
         self.leave(reason="shut down")
         self.disconnect()
 
