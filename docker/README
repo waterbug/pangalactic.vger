@@ -45,7 +45,7 @@ pangalactic.vger git clone -- git will ignore 'build.sh', 'Dockerfile',
 
 * copy 'build_template.sh' to 'build.sh'
 * set version of vger in 'build.sh' to the correct version
-* add a copy of the latest "miniconda" install script for python 3.7
+* add a copy of the latest "miniconda" install script for python 3.10
   and rename it to 'Miniconda3-latest-Linux-x86_64.sh'
 * copy 'Dockerfile_template' to 'Dockerfile' and modify as necessary (e.g.
   setting the crossbar "home" directory)
