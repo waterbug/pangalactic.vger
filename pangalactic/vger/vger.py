@@ -1775,12 +1775,12 @@ class RepositoryService(ApplicationSession):
 
         def set_properties(props=None, cb_details=None):
             """
-            Set property (parameter, data element, or attribute) values. Note
-            that any included parameter values must be expressed in base units.
+            Set specified properties (parameters or data elements) values. Note
+            that parameter values *must* be expressed in base (mks) units.
 
             Keyword Args:
                 props (dict):  dict of properties, in the format
-                    {oid: {property_id: value}}
+                    {oid: {pid or deid: value}}
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
