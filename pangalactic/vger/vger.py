@@ -1295,11 +1295,9 @@ class RepositoryService(ApplicationSession):
             # if any oids appear in "deleted" cache, publish a "deleted" msg
             for oid in deleted:
                 if oid in data:
-                    del data[oid]
                     orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
-                    orb.log.info('  publishing "deleted" message ...')
-                    channel = 'vger.channel.public'
-                    self.publish(channel, {'deleted': oid})
+                    del data[oid]
+                    orb.log.info('  deleted from sync data to be synced.')
             # oids of objects unknown to the server (these would be objects
             # in data that were deleted on the server) -- the user should
             # delete these from their local db (NOTE that this is the REVERSE
