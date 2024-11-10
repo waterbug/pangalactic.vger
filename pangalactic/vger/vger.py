@@ -1292,7 +1292,7 @@ class RepositoryService(ApplicationSession):
             n = len(data)
             orb.log.info(f'  received {n} item(s) in data')
             result = [[], [], {}, {}, '', '']
-            # if any oids appear in "deleted" cache, publish a "deleted" msg
+            # if any oids appear in "deleted" cache, remove them from data
             for oid in deleted:
                 if oid in data:
                     orb.log.info(f'  found in "deleted" cache: oid "{oid}"')
