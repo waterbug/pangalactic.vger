@@ -709,7 +709,7 @@ class RepositoryService(ApplicationSession):
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                dict of dicts, in the form:
+                a dict in the form:
                   {'new_obj_dts':  {obj0.oid : str(obj0.mod_datetime),
                                     obj1.oid : str(obj1.mod_datetime),
                                     ...},
