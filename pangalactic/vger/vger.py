@@ -2576,15 +2576,14 @@ class RepositoryService(ApplicationSession):
                     elif employer_name:
                         # if there is a non-null employer name and it does not
                         # have an Organization object, make one
-                        Organization = orb.classes['Organization']
                         new_oid = str(uuid4())
                         new_id = '_'.join(employer_name.split(' '))
-                        employer = Organization(oid=new_oid, id=new_id,
+                        employer = clone('Organization',
+                                                oid=new_oid, id=new_id,
                                                 name=employer_name,
                                                 creator=admin, modifier=admin,
                                                 create_datetime=dts,
                                                 mod_datetime=dts)
-                        orb.save([employer], recompute=False)
                         data['employer'] = employer
                         saved_objs.append(employer)
                 # TODO: "org code" is some NASA-specific stuff
@@ -2594,16 +2593,22 @@ class RepositoryService(ApplicationSession):
                     if org:
                         data['org'] = org
                     else:
+                        orb.log.debug(f'  org {org_code} not found ...')
                         # if there is not an Organization object for that org
                         # code, make one
-                        Organization = orb.classes['Organization']
                         new_oid = str(uuid4())
-                        org = Organization(oid=new_oid, id=org_code,
+                        org = clone('Organization',
+                                           oid=new_oid, id=org_code,
                                            name='Code '+org_code,
                                            creator=admin, modifier=admin,
                                            create_datetime=dts,
                                            mod_datetime=dts)
-                        orb.save([org], recompute=False)
+                        org = orb.select('Organization', id=org_code)
+                        code = org_code
+                        if org:
+                            orb.log.debug(f'  org {code} created.')
+                        else:
+                            orb.log.debug(f'  org {code} creation failed.')
                         data['org'] = org
                         saved_objs.append(org)
                 # pull public key out of data before adding/updating user
