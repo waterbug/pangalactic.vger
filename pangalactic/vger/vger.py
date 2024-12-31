@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import ruamel_yaml as yaml
 
-from louie import dispatcher
+from pydispatch import dispatcher
 
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet._sslverify import OpenSSLCertificateAuthorities
