@@ -751,7 +751,7 @@ class RepositoryService(ApplicationSession):
                             no_owners=[])
             # ================================================================
             userid = getattr(cb_details, 'caller_authid', 'unknown')
-            orb.log.info('  caller authid: {}'.format(str(userid)))
+            orb.log.info(f'  caller authid: {userid}')
             user_obj = orb.select('Person', id=userid)
             user_oid = getattr(user_obj, 'oid', None)
             # check for objects that have no owners but should ...
@@ -788,8 +788,7 @@ class RepositoryService(ApplicationSession):
             unauth_ids += [unauthorized[oid].get('id', 'no id')
                            for oid in unauthorized]
             if not authorized:
-                orb.log.info('  no save: {} unauthorized object(s).'.format(
-                                                          len(unauthorized)))
+                orb.log.info(f'  no save: {len(unauthorized)} unauthorized')
                 return dict(new_obj_dts={}, mod_obj_dts={}, unauth=unauth_ids,
                             no_owners=no_owners)
             output = deserialize(orb, authorized.values(), dictify=True)
@@ -804,18 +803,38 @@ class RepositoryService(ApplicationSession):
             # ================================================================
             sb_oid = "pgefobjects:SANDBOX"
             to_save = []
+            new_items = 0
+            mod_items = 0
+            unmods = 0
+            errors = 0
             for label in ['new', 'modified', 'unmodified', 'error']:
                 if output.get(label):
-                    psus = [o for o in output[label]
-                        if isinstance(o, orb.classes['ProjectSystemUsage'])]
-                    if psus:
-                        for psu in psus:
-                            if getattr(psu.system, 'oid', '') == sb_oid:
-                                output[label].remove(psu)
-                    if label in ["new", "modified"]:
+                    if label == 'unmodified':
+                        unmods = len(output[label])
+                        orb.log.debug(f'  {unmods} unmodified objs found')
+                        orb.log.debug('           (same or earlier dts)')
+                    elif label == 'error':
+                        errors = len(output[label])
+                        orb.log.debug(f'  {errors} deserialization errors')
+                    else:
+                        psus = [o for o in output[label]
+                           if isinstance(o, orb.classes['ProjectSystemUsage'])]
+                        if psus:
+                            for psu in psus:
+                                if getattr(psu.system, 'oid', '') == sb_oid:
+                                    output[label].remove(psu)
                         to_save += output[label]
+                        if label == 'new':
+                            new_items = len(output[label])
+                        elif label == 'modified':
+                            mod_items = len(output[label])
             if to_save:
                 orb.save(to_save)
+                orb.log.info('  to be saved:')
+                if new_items:
+                    orb.log.debug(f'    + {new_items} new items')
+                if mod_items:
+                    orb.log.debug(f'    + {mod_items} modified items')
             # ================================================================
             mod_obj_dts = {}
             new_obj_dts = {}
@@ -826,8 +845,8 @@ class RepositoryService(ApplicationSession):
             mod_objs = {'public': []}
             new_obj_ids = []
             for mod_obj in output['modified']:
-                # orb.log.info(f'   modified object oid: {mod_obj.oid}')
-                # orb.log.info(f'                    id: {mod_obj.id}')
+                orb.log.info(f'   modified object oid: {mod_obj.oid}')
+                orb.log.info(f'                    id: {mod_obj.id}')
                 # content = (mod_obj.oid, mod_obj.id,
                            # str(mod_obj.mod_datetime))
                 # if the object has a public attr set to True or does not have
@@ -869,7 +888,7 @@ class RepositoryService(ApplicationSession):
                     # self.publish(channel, {'modified': content})
                 mod_obj_dts[mod_obj.oid] = str(mod_obj.mod_datetime)
             for owner_id in mod_objs:
-                # content is now simply a list of serialized objects
+                # NOTE: "content" is now simply a list of serialized objects
                 obj_ids = [so.get('id') or "unknown"
                            for so in mod_objs[owner_id]]
                 if owner_id == 'public':
@@ -888,8 +907,8 @@ class RepositoryService(ApplicationSession):
                 # content = (new_obj.oid, new_obj.id,
                            # str(new_obj.mod_datetime))
                 if is_cloaked(new_obj):
-                    # orb.log.info(f'   + new object oid: {new_obj.oid}')
-                    # orb.log.info('     new object is cloaked -- ')
+                    orb.log.debug(f'   + new object oid: {new_obj.oid}')
+                    orb.log.debug('     new object is cloaked -- ')
                     owner_id = ''
                     if isinstance(new_obj, orb.classes['ManagedObject']):
                         owner_id = getattr(new_obj.owner, 'id', None)
@@ -1937,10 +1956,7 @@ class RepositoryService(ApplicationSession):
                 perms = get_perms(link.component, user)
             elif hasattr(link, 'system'):
                 perms = get_perms(link.system, user)
-            # authorization is based on the "add docs" permission, since mode
-            # definitions are essentially documentation and do not alter the
-            # item
-            if 'add docs' in perms:
+            if 'modify' in perms:
                 if not (project_oid in mode_defz):
                     mode_defz[project_oid] = dict(modes={}, systems={},
                                                   components={})
@@ -2007,10 +2023,7 @@ class RepositoryService(ApplicationSession):
                 perms = get_perms(comp.component, user)
             elif hasattr(comp, 'system'):
                 perms = get_perms(comp.system, user)
-            # authorization is based on the "add docs" permission, since mode
-            # definitions are essentially documentation and do not alter the
-            # item
-            if 'add docs' in perms:
+            if 'modify' in perms:
                 if not (project_oid in mode_defz):
                     mode_defz[project_oid] = dict(modes={}, systems={},
                                                   components={})
