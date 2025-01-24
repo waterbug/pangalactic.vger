@@ -823,7 +823,7 @@ class RepositoryService(ApplicationSession):
                             no_owners=no_owners)
             output = deserialize(orb, authorized.values(), dictify=True)
             # NOTE: vger must recompute parameters -- not done on client
-            orb.recompute_parmz()
+            recompute_parmz()
             # ================================================================
             # special case for PSUs in the "SANDBOX" project: DO NOT send
             # messages to other users regarding ProjectSystemUsages for which
