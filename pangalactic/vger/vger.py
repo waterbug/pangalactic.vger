@@ -2055,8 +2055,7 @@ class RepositoryService(ApplicationSession):
                 perms = get_perms(comp.system, user)
             if 'modify' in perms:
                 if not (project_oid in mode_defz):
-                    mode_defz[project_oid] = dict(modes={}, systems={},
-                                                  components={})
+                    mode_defz[project_oid] = dict(systems={}, components={})
                 if link_oid not in mode_defz[project_oid]['components']:
                     mode_defz[project_oid]['components'][link_oid] = {}
                 if comp_oid not in mode_defz[project_oid]['components'][
