@@ -73,6 +73,7 @@ from pangalactic.core.parametrics      import (data_elementz, parameterz,
                                                delete_parameter,
                                                mode_defz,
                                                rqt_allocz,
+                                               recompute_parmz,
                                                serialize_rqt_allocz,
                                                set_dval, set_pval)
 from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
@@ -1881,15 +1882,15 @@ class RepositoryService(ApplicationSession):
             Get the mode_defz cache.
 
             Returns:
-                data (tuple of str):  [0] last-modified datetime stamp, [1]
-                    serialized (yaml) mode_defz cache
+                data (tuple):
+                    [0] last-modified datetime stamp (str),
+                    [1] mode_defz cache (dict)
             """
             orb.log.info('* [rpc] get_mode_defs()')
-            data = yaml.safe_dump(mode_defz, default_flow_style=False)
             if not state.get('mode_defz_dts'):
                 state['mode_defz_dts'] = str(dtstamp())
             dts = state['mode_defz_dts']
-            return dts, data
+            return dts, mode_defz
 
         yield self.register(get_mode_defs, 'vger.get_mode_defs')
 
