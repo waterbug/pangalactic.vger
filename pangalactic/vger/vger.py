@@ -1946,68 +1946,72 @@ class RepositoryService(ApplicationSession):
         yield self.register(update_mode_defs, 'vger.update_mode_defs',
                             RegisterOptions(details_arg='cb_details'))
 
-        def set_sys_mode_datum(project_oid=None, link_oid=None, mode=None,
-                               value=None, cb_details=None):
-            """
-            Set the mode value for the specified system link in the specified
-            project.
+        # def set_sys_mode_datum(project_oid=None, link_oid=None, mode=None,
+                               # value=None, cb_details=None):
+            # """
+            # Set the mode value for the specified system link in the specified
+            # project.
 
-            Keyword Args:
-                project_oid (str):  oid of the project
-                link_oid (str):  oid of the system link (acu or psu)
-                mode (str):  name of the mode
-                value (str):  value of the mode for that link
-                cb_details:  added by crossbar; not included in rpc signature
+            # Keyword Args:
+                # project_oid (str):  oid of the project
+                # link_oid (str):  oid of the system link (acu or psu)
+                # mode (str):  name of the mode
+                # value (str):  value of the mode for that link
+                # cb_details:  added by crossbar; not included in rpc signature
 
-            Returns:
-                dts (str):  stringified datetime stamp
-            """
-            orb.log.info('* [rpc] vger.set_sys_mode_datum() ...')
-            userid = getattr(cb_details, 'caller_authid', '')
-            user = orb.select('Person', id=userid)
-            # get role assignments in project
-            project = orb.get(project_oid)
-            if not project:
-                return 'no such project'
-            pname = project.id
-            # link retrieved for debug logging -- this can be removed to
-            # improve performance after initial testing ...
-            link = orb.get(link_oid)
-            if not link:
-                return 'unknown link'
-            orb.log.info(f'        sys mode datum received for {pname}')
-            orb.log.info('============================================')
-            orb.log.info(f'system:  {link.name}')
-            orb.log.info(f'mode:    {mode}')
-            orb.log.info(f'value:   {value}')
-            orb.log.info('============================================')
-            # check for user authorization to edit link component
-            perms = []
-            if hasattr(link, 'component'):
-                perms = get_perms(link.component, user)
-            elif hasattr(link, 'system'):
-                perms = get_perms(link.system, user)
-            if 'modify' in perms:
-                if not (project_oid in mode_defz):
-                    mode_defz[project_oid] = dict(modes={}, systems={},
-                                                  components={})
-                if link_oid not in mode_defz[project_oid]['systems']:
-                    mode_defz[project_oid]['systems'][link_oid] = {}
-                mode_defz[project_oid]['systems'][link_oid][mode] = value
-                md_dts = str(dtstamp())
-                state['mode_defz_dts'] = md_dts
-                msg = 'publishing "sys mode datum updated" ...'
-                orb.log.info(f'    {msg}')
-                channel = 'vger.channel.public'
-                self.publish(channel, {'sys mode datum updated':
-                                       (project_oid, link_oid, mode, value,
-                                        md_dts, userid)})
-                return md_dts
-            else:
-                return 'unauthorized'
+            # Returns:
+                # dts (str):  stringified datetime stamp
+            # """
+            # orb.log.info('* [rpc] vger.set_sys_mode_datum() ...')
+            # userid = getattr(cb_details, 'caller_authid', '')
+            # user = orb.select('Person', id=userid)
+            # # get role assignments in project
+            # project = orb.get(project_oid)
+            # if not project:
+                # return 'no such project'
+            # pname = project.id
+            # # link retrieved for debug logging -- this can be removed to
+            # # improve performance after initial testing ...
+            # link = orb.get(link_oid)
+            # if not link:
+                # return 'unknown link'
+            # orb.log.info(f'        sys mode datum received for {pname}')
+            # orb.log.info('============================================')
+            # orb.log.info(f'system:  {link.name}')
+            # orb.log.info(f'mode:    {mode}')
+            # orb.log.info(f'value:   {value}')
+            # orb.log.info('============================================')
+            # # check for user authorization to edit link component
+            # perms = []
+            # usage = None
+            # if hasattr(comp, 'component'):
+                # usage = link.component
+            # elif hasattr(comp, 'system'):
+                # usage = link.system
+            # perms = get_perms(usage, user)
+            # if 'modify' in perms:
+                # if not (project_oid in mode_defz):
+                    # mode_defz[project_oid] = dict(modes={}, systems={},
+                                                  # components={})
+                # if link_oid not in mode_defz[project_oid]['systems']:
+                    # mode_defz[project_oid]['systems'][link_oid] = {}
+                # mode_defz[project_oid]['systems'][link_oid][mode] = value
+                # md_dts = str(dtstamp())
+                # state['mode_defz_dts'] = md_dts
+                # msg = 'publishing "sys mode datum updated" ...'
+                # orb.log.info(f'    {msg}')
+                # channel = 'vger.channel.public'
+                # self.publish(channel, {'sys mode datum updated':
+                                       # (project_oid, link_oid, mode, value,
+                                        # md_dts, userid)})
+                # return md_dts
+            # else:
+                # orb.log.info('  op not authorized:')
+                # orb.log.info('  user "{userid}" cannot modify "{usage.id}"')
+                # return 'unauthorized'
 
-        yield self.register(set_sys_mode_datum, 'vger.set_sys_mode_datum',
-                            RegisterOptions(details_arg='cb_details'))
+        # yield self.register(set_sys_mode_datum, 'vger.set_sys_mode_datum',
+                            # RegisterOptions(details_arg='cb_details'))
 
         def set_comp_mode_datum(project_oid=None, link_oid=None, comp_oid=None,
                                 mode=None, value=None, cb_details=None):
@@ -2050,10 +2054,12 @@ class RepositoryService(ApplicationSession):
             orb.log.info(f'value:      {value}')
             orb.log.info('============================================')
             perms = []
+            usage = None
             if hasattr(comp, 'component'):
-                perms = get_perms(comp.component, user)
+                usage = comp.component
             elif hasattr(comp, 'system'):
-                perms = get_perms(comp.system, user)
+                usage = comp.system
+            perms = get_perms(usage, user)
             if 'modify' in perms:
                 if not (project_oid in mode_defz):
                     mode_defz[project_oid] = dict(systems={}, components={})
@@ -2075,6 +2081,8 @@ class RepositoryService(ApplicationSession):
                                         value, md_dts, userid)})
                 return md_dts
             else:
+                orb.log.info('  op not authorized:')
+                orb.log.info('  user "{userid}" cannot modify "{usage.id}"')
                 return 'unauthorized'
 
         yield self.register(set_comp_mode_datum, 'vger.set_comp_mode_datum',
