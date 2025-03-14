@@ -913,10 +913,6 @@ class RepositoryService(ApplicationSession):
                         # orb.log.info('   not publishing -- no owner org.')
                 else:
                     mod_objs['public'].append(authorized[mod_obj.oid])
-                    # orb.log.info('   + modified object is public, publishing')
-                    # orb.log.info('     "modified" on public channel ...')
-                    # channel = 'vger.channel.public'
-                    # self.publish(channel, {'modified': content})
                 mod_obj_dts[mod_obj.oid] = str(mod_obj.mod_datetime)
             for owner_id in mod_objs:
                 # NOTE: "content" is now simply a list of serialized objects
@@ -930,7 +926,8 @@ class RepositoryService(ApplicationSession):
                     channel = 'vger.channel.' + owner_id
                     orb.log.info(f'   + cloaked objects, publishing {obj_ids}')
                     orb.log.info(f'     "modified" on "{channel}" channel.')
-                self.publish(channel, {'modified': mod_objs[owner_id]})
+                self.publish(channel,
+                             {'modified': (userid, mod_objs[owner_id])})
             for new_obj in output['new']:
                 # orb.log.info('   new object oid: {}'.format(new_obj.oid))
                 # orb.log.info('               id: {}'.format(new_obj.id))
@@ -997,7 +994,7 @@ class RepositoryService(ApplicationSession):
                     txt = f'publishing {n} decloaked items on public channel'
                     orb.log.info('   + {}'.format(txt))
                     self.publish('vger.channel.public',
-                                 {'decloaked': new_objs["public"]})
+                                 {'decloaked': (userid, new_objs["public"])})
                 elif (not org_id == 'public') and new_objs[org_id]:
                     # if not public, publish "new" on owner org channel
                     channel = 'vger.channel.' + org_id
@@ -1008,7 +1005,7 @@ class RepositoryService(ApplicationSession):
                         orb.log.debug('     new object ids:')
                         for obj_id in new_obj_ids:
                             orb.log.debug(f'     - {obj_id}')
-                    self.publish(channel, {'new': new_objs[org_id]})
+                    self.publish(channel, {'new': (userid, new_objs[org_id])})
             return dict(new_obj_dts=new_obj_dts, mod_obj_dts=mod_obj_dts,
                         unauth=unauth_ids, no_owners=no_owners)
 
