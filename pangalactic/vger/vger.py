@@ -1874,6 +1874,48 @@ class RepositoryService(ApplicationSession):
         yield self.register(set_properties, 'vger.set_properties',
                             RegisterOptions(details_arg='cb_details'))
 
+        def get_project_parameters(project_oid, cb_details=None):
+            """
+            Get the critical parameters of the specified project.  Currently
+            these are defined as:
+
+                * System Mass(es): a dict mapping system name to mass for
+                                   project observatory(ies) and top-level
+                                   systems
+                * Peak power: highest value of power over the mission
+                * Average power: average power level over the mission (or
+                                 orbit)
+
+            Args:
+                project (Project):  the specified project
+
+            Returns:
+                data (dict) in the format:
+                    {'masses': {system1 name: m[CBE] in kg,
+                                system2 name: ...}
+                     'p_peak': value in Watts,
+                     'p_average': value in Watts}
+            """
+            project = orb.get(project_oid)
+            orb.log.info(f'* [rpc] get_project_parameters({project_oid})')
+            if not project:
+                orb.log.info('  project not found.')
+                return 'unknown project'
+            userid = getattr(cb_details, 'caller_authid', 'unknown')
+            orb.log.info(f'  called by user {userid}')
+            user = orb.select('Person', id=userid)
+            ras = orb.search_exact(cname='RoleAssignment', assigned_to=user,
+                                   role_assignment_context=project)
+            if not ras and not is_global_admin(user):
+                orb.log.info('   no project role nor GA -- not authorized.')
+                return 'unauthorized'
+            data = orb.get_project_parameters(project)
+            return data
+
+        yield self.register(get_project_parameters,
+                            'vger.get_project_parameters',
+                            RegisterOptions(details_arg='cb_details'))
+
         def get_mode_defs():
             """
             Get the mode_defz cache.
