@@ -1879,9 +1879,7 @@ class RepositoryService(ApplicationSession):
             Get the critical parameters of the specified project.  Currently
             these are defined as:
 
-                * System Mass(es): a dict mapping system name to mass for
-                                   project observatory(ies) and top-level
-                                   systems
+                * Mass: mass (m[CBE]) of the project observatory
                 * Peak power: highest value of power over the mission
                 * Average power: average power level over the mission (or
                                  orbit)
@@ -1896,6 +1894,9 @@ class RepositoryService(ApplicationSession):
                      'p_peak': value in Watts,
                      'p_average': value in Watts}
             """
+            # NOTE: the current assumption is that the project uses a single
+            # observatory -- multi-observatory missions can be addressed in a
+            # future iteration
             project = orb.get(project_oid)
             orb.log.info(f'* [rpc] get_project_parameters({project_oid})')
             if not project:
