@@ -1874,7 +1874,7 @@ class RepositoryService(ApplicationSession):
         yield self.register(set_properties, 'vger.set_properties',
                             RegisterOptions(details_arg='cb_details'))
 
-        def get_project_parameters(project_oid, cb_details=None):
+        def get_project_parameters(project_id, cb_details=None):
             """
             Get the critical parameters of the specified project.  Currently
             these are defined as:
@@ -1885,7 +1885,7 @@ class RepositoryService(ApplicationSession):
                                  orbit)
 
             Args:
-                project (Project):  the specified project
+                project_id (str):  id of the specified project
 
             Returns:
                 data (dict) in the format:
@@ -1897,8 +1897,8 @@ class RepositoryService(ApplicationSession):
             # NOTE: the current assumption is that the project uses a single
             # observatory -- multi-observatory missions can be addressed in a
             # future iteration
-            project = orb.get(project_oid)
-            orb.log.info(f'* [rpc] get_project_parameters({project_oid})')
+            orb.log.info(f'* [rpc] get_project_parameters({project_id})')
+            project = orb.select('Project', id=project_id)
             if not project:
                 orb.log.info('  project not found.')
                 return 'unknown project'
