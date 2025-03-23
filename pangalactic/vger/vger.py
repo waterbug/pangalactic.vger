@@ -1876,27 +1876,17 @@ class RepositoryService(ApplicationSession):
 
         def get_project_parameters(project_id, cb_details=None):
             """
-            Get the critical parameters of the specified project.  Currently
-            these are defined as:
-
-                * Mass: mass (m[CBE]) of the project observatory
-                * Peak power: highest value of power over the mission
-                * Average power: average power level over the mission (or
-                                 orbit)
+            For the specified project, get the critical parameters as specified
+            in the orb function get_project_parameters().
 
             Args:
                 project_id (str):  id of the specified project
 
             Returns:
                 data (dict) in the format:
-                    {'masses': {system1 name: m[CBE] in kg,
-                                system2 name: ...}
-                     'p_peak': value in Watts,
-                     'p_average': value in Watts}
+                    {parameter id: value of parameter in mks units,
+                     ... for each parameter ...}
             """
-            # NOTE: the current assumption is that the project uses a single
-            # observatory -- multi-observatory missions can be addressed in a
-            # future iteration
             orb.log.info(f'* [rpc] get_project_parameters({project_id})')
             project = orb.select('Project', id=project_id)
             if not project:
