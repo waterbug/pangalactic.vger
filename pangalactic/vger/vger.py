@@ -66,12 +66,15 @@ from pangalactic.core.access           import (get_perms, is_cloaked,
                                                is_global_admin, modifiables)
 from pangalactic.core.clone            import clone
 from pangalactic.core.mapping          import schema_maps
+from pangalactic.core.meta             import intconv, SELECTABLE_VALUES
 from pangalactic.core.parametrics      import (data_elementz, parameterz,
                                                add_data_element,
                                                add_parameter,
+                                               de_defz,
                                                delete_data_element,
                                                delete_parameter,
                                                mode_defz,
+                                               parm_defz,
                                                rqt_allocz,
                                                recompute_parmz,
                                                serialize_rqt_allocz,
@@ -96,6 +99,8 @@ test_mel_parms = ['m', 'P', 'R_D',
                   'R_D[CBE]', 'R_D[Ctgcy]', 'R_D[MEV]',
                   'Cost']
 test_mel_des = ['Vendor', 'TRL']
+
+DATATYPES = SELECTABLE_VALUES['range_datatype']
 
 # Default minimum client version is the current version, but this can be
 # modified for a particular release if appropriate
@@ -1636,11 +1641,12 @@ class RepositoryService(ApplicationSession):
 
         def set_parameters(parms=None, cb_details=None):
             """
-            Set a set of parameter values for a set of objects
+            Set a set of parameter values for a set of objects.
 
             Keyword Args:
                 parms (dict):  dict of parameters to update, in the format of
-                    the parameterz cache dict
+                    the parameterz cache dict, i.e.:
+                        {oid1: {pid: value, ...}, oid2: {...}}
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
@@ -1653,23 +1659,30 @@ class RepositoryService(ApplicationSession):
                 return 'failure: bad data format'
             userid = getattr(cb_details, 'caller_authid', 'unknown')
             user_obj = orb.select('Person', id=userid)
-            parms_set = {}
+            parms_set = False
             try:
                 for oid, parmdict in parms.items():
                     obj = orb.get(oid)
                     perms = get_perms(obj, user_obj)
                     if "modify" in perms:
                         for pid, value in parmdict.items():
+                            if pid not in parm_defz:
+                                orb.log.debug(f'  unknown parameter: "{pid}"')
+                                continue
                             set_pval(oid, pid, value)
-                    parms_set[oid] = parmdict
+                            parms_set = True
                 if parms_set:
-                    state['parmz_dts'] = str(dtstamp())
-                    channel = 'vger.channel.public'
+                    recompute_parmz()
+                    parmz_dts = str(dtstamp())
+                    state['parmz_dts'] = parmz_dts
                     # publish on public channel
-                    orb.log.info('  + publishing parameters to "public" ...')
+                    channel = 'vger.channel.public'
+                    orb.log.info('  + publishing "parameters set" message ...')
+                    # superfluous to send values -- client has to call
+                    # get_parmz() because of possible recomputes
                     self.publish(channel,
-                                 {'parameters set': parms_set})
-                    return 'success'
+                                 {'parameters set': parmz_dts})
+                    return parmz_dts
                 else:
                     return 'failure: not authorized'
             except:
@@ -1692,9 +1705,9 @@ class RepositoryService(ApplicationSession):
             """
             argstr = f'oid={oid}, pid={pid}'
             orb.log.info(f'* [rpc] add_parm({argstr})')
-            # For now, just publish on public channel
             add_parameter(oid, pid)
             state['parmz_dts'] = str(dtstamp())
+            # For now, just publish on public channel
             channel = 'vger.channel.public'
             orb.log.info(f'  + publishing "parm added" on "{channel}" ...')
             self.publish(channel,
@@ -1741,27 +1754,48 @@ class RepositoryService(ApplicationSession):
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                result (str):  'success'
+                result: ("modified" dict, dez_dts) or "failure"
             """
             argstr = f'des={des}'
             orb.log.info(f'* [rpc] set_data_elements({argstr})')
             if not des or not isinstance(des, dict):
+                orb.log.debug(' - failed: submitted "des" is not a dict')
                 return 'failure'
             userid = getattr(cb_details, 'caller_authid', 'unknown')
             user_obj = orb.select('Person', id=userid)
+            modified = {}
             try:
-                for oid, dedict in des.items():
+                for oid in des:
                     obj = orb.get(oid)
+                    if not obj:
+                        orb.log.debug(f' - obj with oid "{oid}" not found')
+                        continue
                     perms = get_perms(obj, user_obj)
-                    if "modify" in perms:
-                        for deid, value in dedict.items():
+                    if "modify" in perms and des[oid]:
+                        modified[oid] = {}
+                        for deid, value in des[oid].items():
+                            if deid not in de_defz:
+                                orb.log.debug(f'  unknown de: "{deid}"')
+                                continue
                             set_dval(oid, deid, value)
-                channel = 'vger.channel.public'
-                # publish on public channel
-                # orb.log.info('  + publishing data elements to "public" ...')
-                self.publish(channel,
-                             {'data elements set': des})
-                return 'success'
+                            # must use get_dval() here
+                            # ("value" might not have correct datatype)
+                            modified[oid][deid] = get_dval(oid, deid)
+                    else:
+                        orb.log.debug(f' - not auth for obj with oid "{oid}"')
+                        continue
+                if modified:
+                    mod_dt = dtstamp()
+                    dez_dts = str(mod_dt)
+                    state['dez_dts'] = dez_dts
+                    channel = 'vger.channel.public'
+                    # publish on public channel
+                    # orb.log.info('  + publishing data elements to "public" ...')
+                    self.publish(channel,
+                                 {'data elements set': (modified, dez_dts)})
+                    return dez_dts
+                else:
+                    return 'failure'
             except:
                 return 'failure'
 
