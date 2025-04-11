@@ -1899,11 +1899,13 @@ class RepositoryService(ApplicationSession):
                 state['parmz_dts'] = str(dtstamp())
                 channel = 'vger.channel.public'
                 # publish on public channel
-                # orb.log.info('  + publishing properties to "public" ...')
+                orb.log.info('  + publishing properties to "public" ...')
+                orb.log.info(f'    {prop_mods}')
                 self.publish(channel, {'properties set':
                                        (prop_mods, mod_dt_str)})
                 return 'success'
             except:
+                orb.log.info('  + operation failed!')
                 return 'failure'
 
         yield self.register(set_properties, 'vger.set_properties',
