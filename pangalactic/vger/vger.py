@@ -1871,6 +1871,7 @@ class RepositoryService(ApplicationSession):
             if not props or not isinstance(props, dict):
                 return 'failure'
             userid = getattr(cb_details, 'caller_authid', 'unknown')
+            # orb.log.debug(f'        userid: "{userid}"')
             user_obj = orb.select('Person', id=userid)
             prop_mods = {}
             prop_mod_fails = {}
