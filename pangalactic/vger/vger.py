@@ -1664,7 +1664,7 @@ class RepositoryService(ApplicationSession):
             try:
                 for oid, parmdict in parms.items():
                     obj = orb.get(oid)
-                    perms = get_perms(obj, user_obj)
+                    perms = get_perms(obj, user=user_obj)
                     if "modify" in perms:
                         for pid, value in parmdict.items():
                             if pid not in parm_defz:
@@ -1771,7 +1771,7 @@ class RepositoryService(ApplicationSession):
                     if not obj:
                         orb.log.debug(f' - obj with oid "{oid}" not found')
                         continue
-                    perms = get_perms(obj, user_obj)
+                    perms = get_perms(obj, user=user_obj)
                     if "modify" in perms and des[oid]:
                         modified[oid] = {}
                         for deid, value in des[oid].items():
@@ -1879,7 +1879,7 @@ class RepositoryService(ApplicationSession):
                     prop_mods[oid] = {}
                     prop_mod_fails[oid] = {}  
                     obj = orb.get(oid)
-                    perms = get_perms(obj, user_obj)
+                    perms = get_perms(obj, user=user_obj)
                     if "modify" in perms:
                         for prop_id, value in prop_dict.items():
                             status = orb.set_prop_val(oid, prop_id, value)
