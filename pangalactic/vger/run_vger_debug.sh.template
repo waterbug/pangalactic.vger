@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# NOTE:  this test script assumes:
+# [1] a crossbar server has been started using the
+#     script run_cb_crypto.sh
+#     (this can be on a separate host
+#     if --cb_host is set to that host)
+# [2] postgresql has been initialized and started:
+#     pg_ctl init -D [database location]
+#     pg_ctl start -D [database location]
+
+# -----------------------------------------------------------------
+# Other options available:
+# -----------------------------------------------------------------
+# --test (generates test data -- default is False)
+# -----------------------------------------------------------------
+# If crossbar is running on a different host from vger:
+# --cb_host [fully qualified host name]
+# --cb_port [port -- default is 8080]
+# -----------------------------------------------------------------
+# If crossbar is running on a host with a self-signed certificate:
+# --cert ~/[certificate file -- default: server_cert.pem]
+# -----------------------------------------------------------------
+
+# note that logging to stdout can be set in the config file using
+# console: true
+./vger.py \
+    --home ~/[home directory] \
+    --db_url postgresql://postgres_user@localhost:5432/vgerdb \
+    --debug --console
+
