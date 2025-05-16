@@ -292,8 +292,14 @@ class RepositoryService(ApplicationSession):
         exit.
         """
         write_state(os.path.join(orb.home, 'state'))
-        # orb.save_caches saves *all* caches ...
-        orb.save_caches()
+        if config.get('backup', False):
+            backup_dir = os.path.join(orb.home, 'backup')
+            # NOTE: orb.dump_all() calls orb.save_caches(), saving to both the
+            # orb.home dir and the "backup" dir
+            orb.dump_all(dir_path=backup_dir)
+        else:
+            # if not configured to do a "backup", just save all caches ...
+            orb.save_caches()
         self.leave(reason="shut down")
         self.disconnect()
 
@@ -464,15 +470,16 @@ class RepositoryService(ApplicationSession):
 
         def backup(cb_details=None):
             """
-            Serialize all database objects to a yaml file (db-dump-[datetime
-            stamp].yaml) and save all caches, putting all files into the
-            `backup` directory.
+            Serialize all database objects to a yaml file
+            (db-dump-[datetime stamp].yaml) and save all caches, putting all
+            files into the `backup` directory.
             """
             # dump_all() saves all caches and writes db to a yaml file
             userid = getattr(cb_details, 'caller_authid', 'unknown')
             user = orb.select('Person', id=userid)
             if is_global_admin(user):
-                orb.dump_all()
+                backup_dir = os.path.join(orb.home, 'backup')
+                orb.dump_all(dir_path=backup_dir)
                 return {'result': 'success.'}
             else:
                 return {'result': 'not authorized.'}
@@ -2869,6 +2876,8 @@ if __name__ == '__main__':
                         help='Loads test data at startup')
     parser.add_argument('--console', dest='console', action='store_true',
                         help='Sends log output to stdout')
+    parser.add_argument('--backup', dest='backup', action='store_true',
+                        help='Do a full backup to "backup" dir at exit')
     options = parser.parse_args()
     # command options override config settings; if neither, defaults are used
     home = options.home or ''
@@ -2877,6 +2886,7 @@ if __name__ == '__main__':
     config['test'] = options.test or config.get('test', True)
     config['debug'] = options.debug or config.get('debug', True)
     config['console'] = options.console or config.get('console', False)
+    config['backup'] = options.backup or config.get('backup', False)
     # TODO:  take "local_user" option with default "scred"; use in db_url
     db_url = options.db_url or config.get('db_url',
                     'postgresql://scred@localhost:5432/vgerdb')
