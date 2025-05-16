@@ -293,7 +293,8 @@ class RepositoryService(ApplicationSession):
         """
         write_state(os.path.join(orb.home, 'state'))
         if config.get('backup', False):
-            backup_dir = os.path.join(orb.home, 'backup')
+            fds = file_date_stamp()
+            backup_dir = os.path.join(orb.home, 'backup', fds)
             # NOTE: orb.dump_all() calls orb.save_caches(), saving to both the
             # orb.home dir and the "backup" dir
             orb.dump_all(dir_path=backup_dir)
