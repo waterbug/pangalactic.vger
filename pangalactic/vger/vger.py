@@ -86,7 +86,7 @@ from pangalactic.core.serializers      import (DESERIALIZATION_ORDER,
 from pangalactic.core.refdata          import ref_oids
 from pangalactic.core.test.utils       import (create_test_users,
                                                create_test_project)
-from pangalactic.core.utils.datetimes  import dtstamp, earlier
+from pangalactic.core.utils.datetimes  import dtstamp, earlier, file_date_stamp
 # from pangalactic.vger.lom              import (get_lom_data,
                                                # get_lom_parm_data,
                                                # get_optical_surface_names,
@@ -478,7 +478,8 @@ class RepositoryService(ApplicationSession):
             userid = getattr(cb_details, 'caller_authid', 'unknown')
             user = orb.select('Person', id=userid)
             if is_global_admin(user):
-                backup_dir = os.path.join(orb.home, 'backup')
+                fds = file_date_stamp()
+                backup_dir = os.path.join(orb.home, 'backup', fds)
                 orb.dump_all(dir_path=backup_dir)
                 return {'result': 'success.'}
             else:
