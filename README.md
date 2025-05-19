@@ -52,9 +52,8 @@ Pangalactic depends on several excellent open source libraries,
 applications, and frameworks, most notably:
 
 Python ...... http://www.python.org    (Python Labs and Zope Corporation)
-PyQt ........ https://www.riverbankcomputing.com/software/pyqt/intro
 Twisted ..... http://twistedmatrix.com (Twisted Matrix Laboratories)
-Autobahn .... http://autobahn.ws/python/index.html
+Autobahn .... https://pypi.org/project/autobahn
 
 Thanks to all the talented and dedicated folks who have developed and
 continue to maintain those packages and others in the formidable open
