@@ -1,3 +1,38 @@
+What is it?
+-----------
+The Pan Galactic Engineering Framework (pangalactic) is an open-architecture,
+standards-based software framework for engineering applications such as systems
+engineering data and tool integration, product lifecycle management (PLM),
+computer-aided tools (CAX) integration, collaborative systems engineering,
+design, and analysis, and multi-disciplinary product model capture,
+integration, synthesis, and transformation.
+
+Installation
+------------
+For detailed instructions see the file INSTALL in the pangalactic.core package.
+
+Documentation
+-------------
+Rudimentary documentation is in NOTES.md and in the script template files
+in pangalactic/vger:
+  - run_cb_crypto.sh.template
+  - run_vger_debug.sh.template
+... new docs coming soon.
+
+Acknowledgments
+---------------
+Pangalactic depends on several excellent open source libraries,
+applications, and frameworks, most notably:
+
+Python ...... http://www.python.org
+Twisted ..... http://twistedmatrix.com (Twisted Matrix Laboratories)
+Autobahn .... https://pypi.org/project/autobahn
+
+Thanks to all the talented and dedicated folks who have developed and
+continue to maintain those packages and others in the formidable open
+source code base that makes the Pan Galactic Engineering Framework
+possible!
+
 NOTICE:
 Copyright 2022 United States Government as represented by the Administrator
 of the National Aeronautics and Space Administration.  No copyright is
@@ -27,35 +62,3 @@ UNITED STATES GOVERNMENT, ITS CONTRACTORS AND SUBCONTRACTORS, AS WELL AS ANY
 PRIOR RECIPIENT, TO THE EXTENT PERMITTED BY LAW.  RECIPIENT'S SOLE REMEDY FOR
 ANY SUCH MATTER SHALL BE THE IMMEDIATE, UNILATERAL TERMINATION OF THIS
 AGREEMENT.
-
-What is it?
------------
-The Pan Galactic Engineering Framework (pangalactic) is an open-architecture,
-standards-based software framework for engineering applications such as systems
-engineering data and tool integration, product lifecycle management (PLM),
-computer-aided tools (CAX) integration, collaborative systems engineering,
-design, and analysis, and multi-disciplinary product model capture,
-integration, synthesis, and transformation.
-
-Documentation
--------------
-The documentation available as of the date of this release is in the doc
-directory.
-
-Installation
-------------
-For detailed instructions see the file INSTALL in this directory.
-
-Acknowledgments
----------------
-Pangalactic depends on several excellent open source libraries,
-applications, and frameworks, most notably:
-
-Python ...... http://www.python.org    (Python Labs and Zope Corporation)
-Twisted ..... http://twistedmatrix.com (Twisted Matrix Laboratories)
-Autobahn .... https://pypi.org/project/autobahn
-
-Thanks to all the talented and dedicated folks who have developed and
-continue to maintain those packages and others in the formidable open
-source code base that makes the Pan Galactic Engineering Framework
-possible!
