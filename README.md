@@ -17,6 +17,7 @@ Rudimentary documentation is in NOTES.md and in the script template files
 in pangalactic/vger:
   - run_cb_crypto.sh.template
   - run_vger_debug.sh.template
+
 ... new docs coming soon.
 
 Acknowledgments
