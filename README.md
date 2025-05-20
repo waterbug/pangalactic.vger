@@ -15,6 +15,7 @@ Documentation
 -------------
 Rudimentary documentation is in NOTES.md and in the script template files
 in pangalactic/vger:
+
   - run_cb_crypto.sh.template
   - run_vger_debug.sh.template
 
@@ -25,14 +26,16 @@ Acknowledgments
 Pangalactic depends on several excellent open source libraries,
 applications, and frameworks, most notably:
 
-Python ...... http://www.python.org
-Twisted ..... http://twistedmatrix.com (Twisted Matrix Laboratories)
-Autobahn .... https://pypi.org/project/autobahn
+  - Python ...... http://www.python.org
+  - Twisted ..... http://twistedmatrix.com (Twisted Matrix Laboratories)
+  - Autobahn .... https://pypi.org/project/autobahn
 
 Thanks to all the talented and dedicated folks who have developed and
 continue to maintain those packages and others in the formidable open
 source code base that makes the Pan Galactic Engineering Framework
 possible!
+
+-----------------------------------------------------------------------------
 
 NOTICE:
 Copyright 2022 United States Government as represented by the Administrator
