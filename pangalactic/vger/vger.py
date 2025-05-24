@@ -2815,8 +2815,8 @@ class RepositoryService(ApplicationSession):
 
         def get_people():
             """
-            Get all Person objects and their "active" status (i.e., whether
-            they have a public key in the crossbar authenticator's "principals"
+            Get all Person objects and their "active" status (i.e., the ones
+            that have a public key in the crossbar authenticator's "principals"
             database).
 
             Returns:

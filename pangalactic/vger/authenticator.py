@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+"""
+This authenticator module is intended to be located in the directory that is
+mapped to the "/node" directory of the crossbar docker service (see example
+'run_cb_crypto.sh.template') and in the crossbar configuration it should be
+configured as a "component" with the role of "authenticator" -- see the example
+crossbar config.json file 'crossbar_config_tls.json'.
+"""
 import json, os, sqlite3
 
 from twisted.internet.defer import inlineCallbacks
