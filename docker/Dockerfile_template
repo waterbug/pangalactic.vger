@@ -64,6 +64,6 @@ VOLUME /vgerdb
 
 ### "shell form" of ENTRYPOINT
 ENTRYPOINT exec /usr/bin/sudo -u crossbar \
- /home/crossbar/miniconda/bin/supervisord -c \
+ /home/crossbar/miniforge3/bin/supervisord -c \
  /home/crossbar/supervisord.conf
 
