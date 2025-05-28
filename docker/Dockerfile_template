@@ -22,11 +22,11 @@ WORKDIR /home/crossbar
 # to get a traceback for C crashes ...
 ENV PYTHONFAULTHANDLER=1
 ENV PGPORT=65432
-COPY Miniconda3-latest-Linux-x86_64.sh .
+COPY Miniforge3-latest-Linux-x86_64.sh .
 COPY supervisord.conf .
 SHELL ["bash", "-c"]
-RUN bash Miniconda3-latest-Linux-x86_64.sh -b -p /home/crossbar/miniconda
-ENV PATH="/home/crossbar/miniconda/bin:$PATH"
+RUN bash Miniforge3-latest-Linux-x86_64.sh -b -p /home/crossbar/miniforge3
+ENV PATH="/home/crossbar/miniforge3/bin:$PATH"
 # expose the postgresql port
 EXPOSE 65432
 RUN conda update conda \
@@ -48,11 +48,11 @@ RUN conda update conda \
  && pg_ctl -D /vgerdb start \
  && createdb vgerdb \
  # compile vger.py
- && nuitka --static-libpython=no /home/scred/miniconda/lib/python3.9/site-packages/pangalactic/vger/vger.py \
+ && nuitka --static-libpython=no /home/scred/miniforge3/lib/python3.12/site-packages/pangalactic/vger/vger.py \
  # compile serializers.py
- && nuitka --module --static-libpython=no /home/scred/miniconda/lib/python3.9/site-packages/pangalactic/core/serializers.py \
+ && nuitka --module --static-libpython=no /home/scred/miniforge3/lib/python3.12/site-packages/pangalactic/core/serializers.py \
  # compile uberorb.py
- && nuitka --module --static-libpython=no /home/scred/miniconda/lib/python3.9/site-packages/pangalactic/core/uberorb.py
+ && nuitka --module --static-libpython=no /home/scred/miniforge3/lib/python3.12/site-packages/pangalactic/core/uberorb.py
 
 # create the volume *AFTER* all the db commands have finished: any mods to the
 # volume after it is declared will be discarded!
