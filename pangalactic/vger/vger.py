@@ -2,6 +2,15 @@
 # -*- coding: UTF-8 -*-
 """
 The Virtual Galactic Entropy Reverser
+
+This vger module is the Pan Galactic "Repository Service".  It can be run as a
+python script, an executable (if compiled using Nuitka), or in a Docker
+container.  Running vger requires:
+
+    1. a 'crossbar' server must be running when vger starts up
+    2. vger must be configured with the host and port of the crossbar server
+    3. vger must have a public/private key pair and its public key must be in
+       the database of crossbar's "authenticator" component.
 """
 # NOTICE:
 # Copyright 2022 United States Government as represented by the Administrator
@@ -2799,7 +2808,7 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('                id: {}'.format(person.id))
                 orb.log.info('    publishing "person added" on public channel.')
                 channel = 'vger.channel.public'
-                self.publish(channel, {'person added': ser_objs})
+                self.publish(channel, {'person added': (pk_added, ser_objs)})
                 res = (pk_added, ser_objs)
                 orb.log.info('  returning result: {}'.format(str(res)))
                 return res
