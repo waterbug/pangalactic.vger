@@ -2648,7 +2648,7 @@ class RepositoryService(ApplicationSession):
             orb.log.info('* [rpc] vger.search_ldap')
             ldap_url = config.get('ldap_url') or ''
             base_dn = config.get('base_dn') or ''
-            if 'known_users' in kw and kw.get('test'):
+            if 'known_users' in kw:
                 people = orb.get_by_type('Person')
                 attrs = ['oid', 'id', 'last_name', 'first_name', 'mi_or_name',
                          'email']
@@ -2661,7 +2661,7 @@ class RepositoryService(ApplicationSession):
                     user['org_code'] = getattr(p.org, 'id', 'None')
                     user['employer_name'] = getattr(p.employer, 'id', 'None')
                     users.append(user)
-                return ['local users', users]
+                return ['known users', users]
             elif ldap_url and base_dn:
                 msg = 'calling search_ldap_directory() with {}'.format(kw)
                 orb.log.info('      {}'.format(msg))
