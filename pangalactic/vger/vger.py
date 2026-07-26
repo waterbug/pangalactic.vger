@@ -43,6 +43,7 @@ container.  Running vger requires:
 # AGREEMENT.
 
 import argparse, atexit, json, math, os, sqlite3, sys, traceback
+from datetime import timedelta
 from functools import partial
 from uuid import uuid4
 
@@ -113,8 +114,8 @@ test_mel_des = ['Vendor', 'TRL']
 DATATYPES = SELECTABLE_VALUES['range_datatype']
 
 # Default minimum client version is the current version, but this can be
-# modified for a particular release if appropriate
-MINIMUM_CLIENT_VERSION = __version__
+# overridden by config if appropriate
+MINIMUM_CLIENT_VERSION = config.get('min_version') or __version__
 
 
 class RepositoryService(ApplicationSession):
@@ -1205,6 +1206,273 @@ class RepositoryService(ApplicationSession):
             return (thawed, failed)
 
         yield self.register(thaw, 'vger.thaw',
+                            RegisterOptions(details_arg='cb_details'))
+
+        # ====================================================================
+        # CHECK-OUT / CHECK-IN
+        # --------------------------------------------------------------------
+        # A CheckOut is a claim, recorded in the repository, that a Person
+        # intends to make changes to an object and that no one else should
+        # change it until the claim is released. Its purpose is to make offline
+        # editing safe: without it, a user who edits an object while
+        # disconnected has their work silently discarded on reconnect if
+        # someone else touched the same object meanwhile (deserialize() treats
+        # an equal-or-earlier mod_datetime as "unmodified" and skips it).
+        #
+        # PHASE 1 IS ADVISORY ONLY. These rpcs record, report and publish
+        # claims, but nothing here or in access.py yet *enforces* them --
+        # vger.save() does not consult CheckOuts. That is deliberate: it lets
+        # the model be used and evaluated without disturbing the authorization
+        # path. Enforcement is phase 2.
+        # See pangalactic.core/NOTES_ON_CHECKOUT_MODEL.md.
+        # ====================================================================
+
+        # default lifetime of a claim, in days (overridable via config)
+        DEFAULT_CHECKOUT_DAYS = config.get('checkout_days', 7)
+
+        def get_active_checkout(obj):
+            """
+            Return the current un-expired CheckOut for an object, or None.
+
+            NOTE: expiry is evaluated here rather than by a background sweep,
+            so a lapsed claim simply stops counting as active the next time
+            anyone looks. A sweep that deletes lapsed CheckOut instances and
+            publishes their release can be added later; this function is
+            deliberately the single place that decides "is this object
+            currently claimed?", so that adding one does not change semantics.
+            """
+            cos = orb.search_exact(cname='CheckOut', checked_out_item=obj)
+            now = dtstamp()
+            for co in cos:
+                expiry = getattr(co, 'expiry_datetime', None)
+                if expiry is None or not earlier(expiry, now):
+                    return co
+            return None
+
+        def serialize_checkout(co):
+            """
+            Compact wire form of a CheckOut, for display by clients.
+            """
+            item = getattr(co, 'checked_out_item', None)
+            holder = getattr(co, 'checked_out_by', None)
+            return {'oid': co.oid,
+                    'item_oid': getattr(item, 'oid', ''),
+                    'item_id': getattr(item, 'id', ''),
+                    'userid': getattr(holder, 'id', ''),
+                    'checkout_datetime': str(co.create_datetime or ''),
+                    'expiry_datetime': str(
+                                    getattr(co, 'expiry_datetime', '') or ''),
+                    'purpose': co.description or ''}
+
+        def check_out(oids, days=None, purpose='', cb_details=None):
+            """
+            Claim a set of objects for offline editing.
+
+            Args:
+                oids (list of str):  oids of the objects to claim
+
+            Keyword Args:
+                days (int):  lifetime of the claim in days (default: config
+                    'checkout_days', or 7)
+                purpose (str):  free text shown to collaborators
+                cb_details:  added by crossbar; not in the rpc signature
+
+            Returns:
+                dict:  {'granted': [oids],
+                        'denied': {oid: reason}}
+                    where reason is one of "unknown_oid", "frozen",
+                    "no_permission", or "already_held_by:<userid>".
+            """
+            orb.log.info('* [rpc] vger.check_out() ...')
+            userid = getattr(cb_details, 'caller_authid', '')
+            user = orb.select('Person', id=userid)
+            granted, denied = [], {}
+            if not user:
+                orb.log.info('  no user found -- nothing claimed.')
+                return {'granted': [], 'denied': {oid: 'no_permission'
+                                                  for oid in (oids or [])}}
+            dts = dtstamp()
+            try:
+                n_days = int(days) if days else int(DEFAULT_CHECKOUT_DAYS)
+            except:
+                n_days = int(DEFAULT_CHECKOUT_DAYS)
+            expiry = dts + timedelta(days=n_days)
+            new_cos = []
+            for oid in (oids or []):
+                obj = orb.get(oid)
+                if obj is None:
+                    denied[oid] = 'unknown_oid'
+                    continue
+                # a frozen object is read-only for everyone, so claiming it
+                # would be meaningless
+                if getattr(obj, 'frozen', False):
+                    denied[oid] = 'frozen'
+                    continue
+                existing = get_active_checkout(obj)
+                if existing is not None:
+                    holder = getattr(existing.checked_out_by, 'id', '')
+                    if holder == userid:
+                        # idempotent: the caller already holds this claim
+                        granted.append(oid)
+                    else:
+                        denied[oid] = f'already_held_by:{holder}'
+                    continue
+                # entitlement is checked with the *same* get_perms() used
+                # everywhere else, so check-out cannot grant access the user
+                # would not otherwise have
+                if 'modify' not in get_perms(obj, user=user):
+                    denied[oid] = 'no_permission'
+                    continue
+                co = clone('CheckOut',
+                           id='checkout-' + oid[:8] + '-' + str(uuid4().int)[:6],
+                           name=f'checkout of {getattr(obj, "id", oid)}',
+                           description=purpose or '',
+                           checked_out_item=obj, checked_out_by=user,
+                           expiry_datetime=expiry,
+                           creator=user, modifier=user,
+                           create_datetime=dts, mod_datetime=dts)
+                new_cos.append(co)
+                granted.append(oid)
+            if new_cos:
+                orb.save(new_cos)
+                orb.log.info(f'  {len(new_cos)} claim(s) recorded.')
+                self.publish('vger.channel.public',
+                             {'checked out': [serialize_checkout(co)
+                                              for co in new_cos]})
+            if denied:
+                orb.log.info(f'  {len(denied)} denied: {denied}')
+            return {'granted': granted, 'denied': denied}
+
+        yield self.register(check_out, 'vger.check_out',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def check_in(oids, cb_details=None):
+            """
+            Release the caller's own claims on a set of objects.
+
+            NOTE: this releases claims only -- object changes continue to be
+            saved through vger.save() as usual. Making check-in atomic
+            (save + release in one call, so there is no window in which the
+            objects are released but the edits have not landed) matters once
+            claims are *enforced*, and is therefore a phase 2 item; while the
+            model is advisory the window is harmless.
+
+            Args:
+                oids (list of str):  oids of the objects to release
+
+            Keyword Args:
+                cb_details:  added by crossbar; not in the rpc signature
+
+            Returns:
+                dict:  {'checked_in': [oids],
+                        'not_held': [oids]}   # no claim, or held by someone
+                                              # else (use vger.release)
+            """
+            orb.log.info('* [rpc] vger.check_in() ...')
+            userid = getattr(cb_details, 'caller_authid', '')
+            user = orb.select('Person', id=userid)
+            checked_in, not_held = [], []
+            to_delete = []
+            for oid in (oids or []):
+                obj = orb.get(oid)
+                co = get_active_checkout(obj) if obj is not None else None
+                if co is None or getattr(co.checked_out_by, 'id', '') != userid:
+                    not_held.append(oid)
+                    continue
+                to_delete.append(co)
+                checked_in.append(oid)
+            if to_delete:
+                # release is represented by deletion of the CheckOut instance
+                orb.delete(to_delete)
+                orb.log.info(f'  {len(checked_in)} claim(s) released.')
+                self.publish('vger.channel.public',
+                             {'checked in': checked_in})
+            if not_held:
+                orb.log.info(f'  {len(not_held)} not held by "{userid}".')
+            return {'checked_in': checked_in, 'not_held': not_held}
+
+        yield self.register(check_in, 'vger.check_in',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def release(oids, cb_details=None):
+            """
+            Force-release claims held by *anyone*.
+
+            This is the administrative counterpart to check_in(): it exists so
+            a forgotten claim cannot block a project indefinitely. Restricted
+            to a Global Administrator, or to the holder of the claim (for whom
+            it is equivalent to check_in).
+
+            Args:
+                oids (list of str):  oids of the objects to release
+
+            Keyword Args:
+                cb_details:  added by crossbar; not in the rpc signature
+
+            Returns:
+                dict:  {'released': [oids], 'unauth': [oids],
+                        'not_held': [oids]}
+            """
+            orb.log.info('* [rpc] vger.release() ...')
+            userid = getattr(cb_details, 'caller_authid', '')
+            user = orb.select('Person', id=userid)
+            ga = is_global_admin(user)
+            released, unauth, not_held = [], [], []
+            to_delete = []
+            for oid in (oids or []):
+                obj = orb.get(oid)
+                co = get_active_checkout(obj) if obj is not None else None
+                if co is None:
+                    not_held.append(oid)
+                    continue
+                holder = getattr(co.checked_out_by, 'id', '')
+                if ga or holder == userid:
+                    to_delete.append(co)
+                    released.append(oid)
+                else:
+                    unauth.append(oid)
+            if to_delete:
+                orb.delete(to_delete)
+                orb.log.info(f'  {len(released)} claim(s) force-released.')
+                self.publish('vger.channel.public', {'checked in': released})
+            if unauth:
+                orb.log.info(f'  {len(unauth)} not authorized for "{userid}".')
+            return {'released': released, 'unauth': unauth,
+                    'not_held': not_held}
+
+        yield self.register(release, 'vger.release',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def get_checkouts(oids=None, cb_details=None):
+            """
+            Get the currently active (un-expired) check-out claims.
+
+            Keyword Args:
+                oids (list of str):  if given, restrict the result to claims on
+                    these objects; if None, return all active claims
+                cb_details:  added by crossbar; not in the rpc signature
+
+            Returns:
+                list of dict:  compact CheckOut records (see
+                    serialize_checkout) -- item oid/id, holder userid,
+                    checkout and expiry datetimes, and purpose.
+            """
+            orb.log.info('* [rpc] vger.get_checkouts() ...')
+            now = dtstamp()
+            result = []
+            for co in orb.get_by_type('CheckOut'):
+                expiry = getattr(co, 'expiry_datetime', None)
+                if expiry is not None and earlier(expiry, now):
+                    # lapsed -- not reported as active
+                    continue
+                item = getattr(co, 'checked_out_item', None)
+                if oids and getattr(item, 'oid', None) not in oids:
+                    continue
+                result.append(serialize_checkout(co))
+            orb.log.info(f'  {len(result)} active claim(s).')
+            return result
+
+        yield self.register(get_checkouts, 'vger.get_checkouts',
                             RegisterOptions(details_arg='cb_details'))
 
         def sync_objects(data, cb_details=None):
