@@ -1,0 +1,45 @@
+[build-system]
+# >= 77.0 is required for PEP 639 support ("license" SPDX expression and
+# "license-files" in [project]).
+requires = ["setuptools >= 77.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pangalactic.vger"
+version = "4.4.dev3"
+description = "The Virtual Galactic Engineering Repository"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "NASA-1.3"
+license-files = ["NOSA_18985_Pan_Galactic_Engineering_Framework_3.0.pdf"]
+authors = [
+    {name = "Stephen Waterbury", email = "waterbug81@gmail.com"},
+]
+maintainers = [
+    {name = "Stephen Waterbury", email = "waterbug@pangalactic.us"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+# NOTE: setup.py declared no install_requires for this package, so none are
+# declared here either -- the repository service's runtime dependencies come
+# from the "run:" section of its conda recipe. If they are ever wanted here,
+# they are at minimum: pangalactic.core, autobahn, twisted, crossbar,
+# psycopg2, pynacl, ruamel_yaml.
+dependencies = []
+
+[project.urls]
+repository = "https://github.com/waterbug/pangalactic.vger"
+
+# equivalent of setup.py's find_packages()
+[tool.setuptools.packages.find]
+include = ["pangalactic*"]
+
+# NOTE: this package had no "data_files" in setup.py and needs no package-data
+# -- vger reads its ontology, reference data and test fixtures from
+# pangalactic.core, and its runtime files (certs, keys, crossbar config) live
+# in the server's home directory rather than in the package.
