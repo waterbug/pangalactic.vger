@@ -49,6 +49,28 @@ this a practical primitive for planting files, corrupting application data,
 or worse depending on the vger process's filesystem permissions. This is
 the most severe finding in the file.
 
+**STATUS: FIXED.** `upload_chunk` now rejects the call unless (a) the
+caller's `caller_authid` resolves to a known `Person` and (b) `fname` passes
+a new module-level `valid_vault_fname()` — a bare file name, no `/` or `\`,
+not absolute, no drive letter, not `.`/`..`, no embedded null. Rejections
+raise `ApplicationError`, so the client's existing errback fires instead of
+the call silently appearing to succeed. **Verified by execution**, against a
+temp vault with a victim file outside it:
+
+| attack `fname` | pre-fix | post-fix |
+|---|---|---|
+| `../victim/authorized_keys` | wrote, no error — **file breached** | blocked, vault untouched |
+| `/abs/path/victim/authorized_keys` | wrote, no error — **file breached** | blocked, vault untouched |
+
+Both legitimate client-generated shapes (`report.pdf`,
+`<oid>_<name with spaces>.step`) still pass.
+
+*(Not addressed, and worth a separate decision: `'ab'` mode means a repeated
+upload of the same `fname` appends to the existing vault file rather than
+replacing it, so an interrupted-and-retried upload silently corrupts the
+file. Opening `'wb'` for `seq == 0` and `'ab'` thereafter would fix it, but
+that is a behaviour change beyond this finding.)*
+
 Contrast with `download_chunk()` (line 699+) and the `add_update_model`/
 `add_update_doc` flow, which derive their vault paths from
 `orb.get_vault_fname()`/`get_vault_fpath()` (`rep_file.oid + '_' +
@@ -92,6 +114,25 @@ ownership. The only other gate the attacker must clear is supplying a
 `mod_datetime` later than the object's current one, which is trivial
 (current timestamp).
 
+**STATUS: FIXED.** The two loops are now one, and the submitted `creator`
+field is only consulted when `obj_in_repo is None` — i.e. for a genuinely new
+object, where there is nothing else to check it against. An object that
+already exists is authorized purely by `get_perms()`. **Verified by
+execution** against a real orb with the standard test fixtures, running the
+pre-fix and post-fix authorization blocks (transcribed verbatim) over the
+same payload, as user `zaphod` targeting `FDValve-0000866` (creator `admin`,
+`zaphod` perms `['add docs', 'add models', 'view']`):
+
+| case | pre-fix | post-fix |
+|---|---|---|
+| spoofed `creator` on an existing object the user cannot modify | **authorized — bypass** | refused |
+| genuinely new object created by the user | authorized | authorized |
+| existing object the user really created | authorized | authorized |
+
+The two regression cases confirm the fix does not cost the legitimate
+creator anything: a real creator still gets `modify` from `get_perms()`'s own
+creator branch, so the fast path was never load-bearing for them.
+
 ### 3. `save()` — `sobjs.remove(so)` on a `dict_values` view crashes the entire batch
 `pangalactic/vger/vger.py:786-802`
 ```python
@@ -113,6 +154,22 @@ user has since deleted, or any offline-edit/delete race). The exception is
 unhandled at this level, so the entire RPC call fails for the whole batch,
 not just the one stale object — every other valid object in the same
 `save()` call is rejected as a side effect.
+
+**STATUS: FIXED.** The in-place mutation is gone; entries whose oid is in the
+`deleted` cache are now `pop`ped from `sobjs_unique` itself. **Verified by
+execution** on a three-object batch with one oid in `deleted`: pre-fix raises
+`AttributeError: 'dict_values' object has no attribute 'remove'` and the
+whole batch fails; post-fix the two good objects survive and the stale one is
+reported in `unauth`.
+
+Note this also closes a **second bug in the same block**: the removal was
+being applied to `sobjs`, but every subsequent step — the ownerless check and
+the whole authorization section — operates on `sobjs_unique`, which was never
+touched. So even had `sobjs` been a real list, an object in the `deleted`
+cache would have been named in `unauth_ids` *and saved anyway*. Popping from
+`sobjs_unique` is what the block was evidently meant to do; `sobjs` is a view
+of it, so it now reflects the removals and the `if not sobjs:` early return
+still behaves as before.
 
 ### 4. `sync_project()` — `UnboundLocalError` when the caller has no `caller_authid`
 `pangalactic/vger/vger.py:1563-1572`
@@ -138,6 +195,16 @@ defaults it to `'unknown'`/`None` and calls `orb.select('Person',
 id=userid)` unconditionally (safe — returns `None` for an unresolvable id),
 or (like here) guards the lookup but then forgets the guard was
 conditional.
+
+**STATUS: FIXED.** `user = None` is now initialized before the `if userid:`
+guard. **Verified by execution**: pre-fix, a call with no `caller_authid`
+raises `UnboundLocalError`; post-fix it takes the intended "no user found"
+early return, and the normal-caller path is unchanged.
+
+A sweep of all 27 `caller_authid` sites in the file confirms this was the
+**only** remaining instance of the pattern — `get_object` (line ~2646) also
+guards the lookup with `if userid:` but uses `user` exclusively inside that
+block, and `get_objects` (~2703) already initializes `user_obj = None` first.
 
 ### 5. Inconsistent authorization on user-directory RPCs
 `pangalactic/vger/vger.py:2621-2634` (`get_user_object`) and `2825-2864`
@@ -166,6 +233,21 @@ repository access (`get_people`'s active-key flag) with zero authorization
 logic — worth a deliberate decision either way rather than the current
 inconsistency with the object-access RPCs.
 
+**STATUS: NOT A DEFECT — intentional, confirmed by the author.** The
+org-wide readable Person roster is a structural requirement of the sync
+model, not an oversight. Each user holds a complete local database of the
+objects belonging to the projects they have a role on, and those objects
+carry FK references to `Person` instances — `creator` and `modifier` on every
+`HardwareProduct`, and so on. Those `Person` records are populated into the
+client's database during the initial sync, which uses `get_people()`, and
+refreshed when a new user is added. Restricting the roster would therefore
+break FK resolution for objects the user is already entitled to see.
+
+Given that, the asymmetry with `get_object`/`get_objects` is principled
+rather than accidental: those RPCs gate *project data*, which is what
+`is_cloaked`/`get_perms` exist to protect, while the Person roster is
+reference data the client cannot function without. No code change.
+
 ### 6. `RepositoryService.__init__` depends on bare module globals set only in `__main__`
 `pangalactic/vger/vger.py:144-158` (reading `cb_host`, `cb_port`, `cb_url`,
 `realm`) vs. `2905-2912` (where they're actually assigned, inside
@@ -185,6 +267,13 @@ would raise `NameError` if `RepositoryService` were ever constructed from a
 test harness or alternate entry point that imports `vger` without running
 its `__main__` block (the package does have a `test/` directory with its
 own crossbar config, suggesting that's a plausible future use).
+
+**STATUS: FIXED.** `cb_host`, `cb_port`, `cb_url`, and `realm` now follow the
+same `kw.get(x) or config.get(x, default)` pattern as every other `__init__`
+parameter, with defaults matching what the `__main__` block uses. `__main__`
+additionally writes `config['realm']` now, alongside the `cb_host`/`cb_port`/
+`cb_url` entries it already wrote, so the values `__init__` logs are the ones
+actually in use.
 
 ### 7. Broad bare `except:` around entire per-item loops masks partial writes
 `pangalactic/vger/vger.py:1682-1708` (`set_parameters`), `1786-1819`
@@ -208,6 +297,25 @@ continue` at line ~1789) — an unknown oid there falls through to
 'frozen', False)` etc. don't raise, but the resulting permission decision
 for `None` is incidental, not intentional).
 
+**STATUS: FIXED.** All three now handle each oid in its own `try/except
+Exception`, logging the failure at `error` with the oid and skipping to the
+next item, then report the count of failed oids. The publish/commit phase
+keeps a separate `try/except` so the existing return contracts
+(`parmz_dts`/`dez_dts` on success, `'failure: not authorized'`,
+`'failure: exception'`, `'failure'`) are unchanged. `set_parameters` and
+`set_properties` also gained the explicit `if not obj: continue` guard that
+`set_data_elements` already had, so an unknown oid is skipped rather than
+falling through to `get_perms(None, ...)`.
+
+Two consequences beyond the finding as written:
+- A bad item no longer strands earlier items' cache mutations behind a
+  whole-call failure report — the good items complete and are published.
+- `set_properties` previously created `prop_mods[oid] = {}` *before* testing
+  `'modify' in perms`, so an unauthorized oid stayed in `prop_mods` as an
+  empty entry, and the `oids = list(prop_mods)` step then bumped and
+  committed `mod_datetime` on objects the caller had no right to touch. The
+  entry is now created only after the permission check passes.
+
 ### 8. Missing null-checks on caller-supplied FK oids in `add_update_model`/`add_update_doc`
 `pangalactic/vger/vger.py:536-537` (`add_update_model`) and `606-610`
 (`add_update_doc`)
@@ -228,6 +336,16 @@ null-checked before `.id`, and `owner` in both functions can end up `None`
 dereferenced. A malformed or stale client payload crashes the handler with
 an unhandled `AttributeError` instead of the clean `(error message, [])`
 response the sibling check already establishes as the intended contract.
+
+**STATUS: FIXED.** `add_update_model` now returns
+`('model has no "of_thing" object', [])` when `thing` is missing and
+`('model has no owner', [])` when neither `owner_oid` nor `project_oid`
+resolves; `add_update_doc` returns `('doc has no owner', [])` for the same
+owner case. All follow the error-tuple contract already set by
+`add_update_doc`'s `rel_obj` check. The `thing.owner.id` log line was also
+made defensive (`getattr(thing.owner, 'id', '[none]')`) — a `ManagedObject`
+with no owner is possible (`save()` has an explicit `no_owners` path for
+exactly that), and it should not crash a log statement.
 
 ---
 
@@ -263,7 +381,33 @@ non-issue: the caller's *identity* can be trusted, but `save()`'s
 *authorization logic* substitutes a client-supplied payload field
 (`creator`) for the identity check it should be doing instead.
 
-## Suggested fix order
+## Status summary (2026-07-31)
+
+Findings **#1, #2, #3, #4, #6, #7, #8 are fixed** in `vger.py`; each is
+annotated inline above with what changed and how it was verified. **#5 is
+closed as intentional** — the author confirmed the org-wide Person roster is
+required by the sync model (clients need `Person` records to resolve
+`creator`/`modifier` FKs on project objects they already hold); no code
+change.
+
+The one deliberately deferred item is noted under #1: `upload_chunk` opens
+the vault file in `'ab'` mode regardless of `seq`, so a retried upload
+appends to the previous attempt instead of replacing it. That is a
+pre-existing data-corruption risk, independent of the traversal fix, and
+needs its own decision.
+
+Verification note: `vger.py` has **no test suite**, and cannot currently be
+imported in an environment without `python-ldap`, because
+`pangalactic/vger/userdir.py` does a bare top-level `import ldap` which
+`vger.py` imports at module level. The checks above were therefore run with
+`sys.modules['ldap']` stubbed, and the RPC handlers — which are closures
+inside `RepositoryService.onJoin` and so not reachable without a WAMP session
+— were exercised by transcribing the pre-fix and post-fix blocks verbatim and
+running both against a real orb with the standard test fixtures. Making LDAP
+a conditional dependency, and lifting the handlers somewhere they can be
+called directly, are both prerequisites for a genuine vger test suite.
+
+## Suggested fix order (as originally written; all now addressed)
 
 1. **#1 (`upload_chunk` path traversal)** — fix immediately; validate
    `fname` is a bare filename (no path separators, no leading `/`) and/or

@@ -60,6 +60,7 @@ from OpenSSL import crypto
 from autobahn.twisted.component import Component, run
 from autobahn.twisted.wamp import ApplicationSession
 from autobahn.wamp         import cryptosign
+from autobahn.wamp.exception import ApplicationError
 from autobahn.wamp.types   import RegisterOptions
 
 # sets "orb" to uberorb.orb, so that
@@ -118,6 +119,39 @@ DATATYPES = SELECTABLE_VALUES['range_datatype']
 MINIMUM_CLIENT_VERSION = config.get('min_version') or __version__
 
 
+def valid_vault_fname(fname):
+    """
+    Check that a caller-supplied vault file name is a bare file name, and is
+    therefore safe to join to the vault directory path.
+
+    Vault file names are generated on the client as either the base name of
+    the file being uploaded or "[RepresentationFile.oid]_[base name]", so a
+    valid name never contains a path separator.  Any other name is rejected:
+    os.path.join() discards the vault path entirely if it is given an absolute
+    path, and "../" segments escape the vault just as readily, so an
+    unvalidated name would let any caller write anywhere the vger process can.
+
+    Args:
+        fname (str):  the file name supplied by the caller
+
+    Returns:
+        bool:  True if the name is safe to use within the vault
+    """
+    if not fname or not isinstance(fname, str):
+        return False
+    if fname in ('.', '..'):
+        return False
+    # check both separators, so that a windows-style path is rejected when
+    # vger is running on posix (and vice versa)
+    if '/' in fname or '\\' in fname:
+        return False
+    if os.path.isabs(fname) or os.path.splitdrive(fname)[0]:
+        return False
+    if '\x00' in fname:
+        return False
+    return True
+
+
 class RepositoryService(ApplicationSession):
     """
     The Pan Galactic Engineering Repository Service container object
@@ -142,6 +176,15 @@ class RepositoryService(ApplicationSession):
         test = kw.get('test') or config.get('test', True)
         ldap_url = kw.get('ldap_url') or config.get('ldap_url', '[not set]')
         base_dn = kw.get('base_dn') or config.get('base_dn', '[not set]')
+        # NOTE: these follow the same kw/config pattern as the parameters
+        # above, so that RepositoryService can be constructed from a test
+        # harness or an alternate entry point -- i.e. without depending on the
+        # module-level names assigned in the "__main__" block having been set
+        cb_host = kw.get('cb_host') or config.get('cb_host', 'localhost')
+        cb_port = kw.get('cb_port') or config.get('cb_port', 8080)
+        cb_url = kw.get('cb_url') or config.get('cb_url',
+                                                f'wss://{cb_host}:{cb_port}/ws')
+        realm = kw.get('realm') or config.get('realm', 'pangalactic-services')
         config['cb_host'] = cb_host
         config['cb_port'] = cb_port
         # start the orb ...
@@ -535,14 +578,21 @@ class RepositoryService(ApplicationSession):
             m_id = m_id_prefix + '-' + m_id_suffix
             m_desc = parms.get('description', '') or ''
             thing = orb.get(parms.get('of_thing_oid', ''))
+            if not thing:
+                # error condition -- no object for the model to be a model of
+                return 'model has no "of_thing" object', []
             orb.log.info(f'        model of thing: {thing.id}')
             # TODO: it's possible that the model's owner is different from the
             # product spec's owner -- allow that to be specified
-            orb.log.info(f'        owner of thing: {thing.owner.id}')
+            thing_owner_id = getattr(thing.owner, 'id', '[none]')
+            orb.log.info(f'        owner of thing: {thing_owner_id}')
             # Model
             owner = orb.get(parms.get('owner_oid'))
             if not owner:
                 owner = orb.get(parms.get('project_oid'))
+            if not owner:
+                # error condition -- no owner and no project to default to
+                return 'model has no owner', []
             model = clone('Model', of_thing=thing, type_of_model=mtype,
                           id=m_id, name=m_name,
                           description=m_desc, owner=owner,
@@ -608,6 +658,9 @@ class RepositoryService(ApplicationSession):
             if not owner:
                 # owner defaults to project
                 owner = orb.get(parms.get('project_oid'))
+            if not owner:
+                # error condition -- no owner and no project to default to
+                return 'doc has no owner', []
             orb.log.info(f'        doc owner: {owner.id}')
             document = clone('Document', id=doc_id, name=doc_name,
                         description=doc_desc, owner=owner,
@@ -668,6 +721,16 @@ class RepositoryService(ApplicationSession):
             orb.log.info('* [rpc] vger.upload_chunk() ...')
             orb.log.info(f'  fname: {fname}')
             orb.log.info(f'  chunk size: {n}')
+            userid = getattr(cb_details, 'caller_authid', '')
+            if not orb.select('Person', id=userid):
+                orb.log.error(f'  unknown user "{userid}" -- rejected.')
+                raise ApplicationError('vger.error.not_authorized',
+                                       'upload not authorized')
+            if not valid_vault_fname(fname):
+                orb.log.error(f'  invalid vault file name "{fname}" -- '
+                              'rejected.')
+                raise ApplicationError('vger.error.invalid_argument',
+                                       'invalid vault file name')
             # write to file
             vault_fpath = os.path.join(orb.vault, fname)
             with open(vault_fpath, 'ab') as f:
@@ -796,11 +859,13 @@ class RepositoryService(ApplicationSession):
             # first, check to make sure none of the submitted oids are in the
             # "deleted" cache ...
             unauth_ids = []
-            for oid, so in sobjs_unique.items():
-                if oid in deleted and so in sobjs:
-                    unauth_ids.append(so.get('id') or 'unknown_id')
-                    sobjs.remove(so)
-                    orb.log.info(f'  "{oid}" was in "deleted" cache; ignored.')
+            # NOTE: these are dropped from "sobjs_unique" itself (which is what
+            # the authorization logic below operates on); "sobjs" is a view of
+            # it, so it reflects the removals
+            for oid in [oid for oid in sobjs_unique if oid in deleted]:
+                so = sobjs_unique.pop(oid)
+                unauth_ids.append(so.get('id') or 'unknown_id')
+                orb.log.info(f'  "{oid}" was in "deleted" cache; ignored.')
             if not sobjs:
                 orb.log.info('  all oids submitted were in "deleted".')
                 return dict(new_obj_dts={}, mod_obj_dts={}, unauth=unauth_ids,
@@ -822,13 +887,21 @@ class RepositoryService(ApplicationSession):
                     ownerless.append(sobj['oid'])
             for oid in ownerless:
                 del sobjs_unique[oid]
-            # objects created by the user
-            authorized = {oid:so for oid, so in sobjs_unique.items()
-                          if so.get('creator') == user_oid}
-            # existing objects for which the user has 'modify' permission
+            # NOTE: the submitted "creator" field is only trusted for objects
+            # that do not yet exist in the repository -- i.e. for genuinely new
+            # objects, where there is nothing else to check it against.  For an
+            # object that does exist, the submitted "creator" says nothing
+            # about the caller's rights to it, so authorization is done purely
+            # by get_perms() (which grants 'modify' to the real creator anyway)
+            authorized = {}
             for oid, so in sobjs_unique.items():
                 obj_in_repo = orb.get(so.get('oid'))
-                if obj_in_repo:
+                if obj_in_repo is None:
+                    # new object: authorized if the user is its creator
+                    if so.get('creator') == user_oid:
+                        authorized[oid] = so
+                else:
+                    # existing object: authorized if user has 'modify' perm
                     obj_id = obj_in_repo.id
                     perms = get_perms(obj_in_repo, user=user_obj)
                     # orb.log.debug(f'  - perms: {perms} | id: "{obj_id}"')
@@ -1829,6 +1902,7 @@ class RepositoryService(ApplicationSession):
             argstr = f'project_oid={project_oid}'
             orb.log.info(f'* [rpc] vger.sync_project({argstr}) ...')
             userid = getattr(cb_details, 'caller_authid', '')
+            user = None
             if userid:
                 user = orb.select('Person', id=userid)
             result = [[], [], [], [], [], {}, {}]
@@ -1947,32 +2021,49 @@ class RepositoryService(ApplicationSession):
             userid = getattr(cb_details, 'caller_authid', 'unknown')
             user_obj = orb.select('Person', id=userid)
             parms_set = False
-            try:
-                for oid, parmdict in parms.items():
+            failed_oids = []
+            # NOTE: each oid is handled in its own try/except, so that one bad
+            # item does not abandon the whole batch part-way through -- which
+            # previously left the values already written to the "parameterz"
+            # cache in place while reporting that the entire call had failed
+            for oid, parmdict in parms.items():
+                try:
                     obj = orb.get(oid)
+                    if not obj:
+                        orb.log.debug(f'  obj with oid "{oid}" not found')
+                        continue
                     perms = get_perms(obj, user=user_obj)
-                    if "modify" in perms:
-                        for pid, value in parmdict.items():
-                            if pid not in parm_defz:
-                                orb.log.debug(f'  unknown parameter: "{pid}"')
-                                continue
-                            set_pval(oid, pid, value)
-                            parms_set = True
-                if parms_set:
-                    recompute_parmz()
-                    parmz_dts = str(dtstamp())
-                    state['parmz_dts'] = parmz_dts
-                    # publish on public channel
-                    channel = 'vger.channel.public'
-                    orb.log.info('  + publishing "parameters set" message ...')
-                    # superfluous to send values -- client has to call
-                    # get_parmz() because of possible recomputes
-                    self.publish(channel,
-                                 {'parameters set': parmz_dts})
-                    return parmz_dts
-                else:
-                    return 'failure: not authorized'
-            except:
+                    if "modify" not in perms:
+                        orb.log.debug(f'  not auth for obj with oid "{oid}"')
+                        continue
+                    for pid, value in parmdict.items():
+                        if pid not in parm_defz:
+                            orb.log.debug(f'  unknown parameter: "{pid}"')
+                            continue
+                        set_pval(oid, pid, value)
+                        parms_set = True
+                except Exception as e:
+                    orb.log.error(f'  setting parms for "{oid}" failed: {e}')
+                    failed_oids.append(oid)
+            if failed_oids:
+                n = len(failed_oids)
+                orb.log.error(f'  {n} oid(s) failed: {failed_oids}')
+            if not parms_set:
+                return 'failure: not authorized'
+            try:
+                recompute_parmz()
+                parmz_dts = str(dtstamp())
+                state['parmz_dts'] = parmz_dts
+                # publish on public channel
+                channel = 'vger.channel.public'
+                orb.log.info('  + publishing "parameters set" message ...')
+                # superfluous to send values -- client has to call
+                # get_parmz() because of possible recomputes
+                self.publish(channel,
+                             {'parameters set': parmz_dts})
+                return parmz_dts
+            except Exception as e:
+                orb.log.error(f'  publishing "parameters set" failed: {e}')
                 return 'failure: exception'
 
         yield self.register(set_parameters, 'vger.set_parameters',
@@ -2051,8 +2142,11 @@ class RepositoryService(ApplicationSession):
             userid = getattr(cb_details, 'caller_authid', 'unknown')
             user_obj = orb.select('Person', id=userid)
             modified = {}
-            try:
-                for oid in des:
+            failed_oids = []
+            # NOTE: as in set_parameters(), each oid gets its own try/except so
+            # that one bad item does not abandon the rest of the batch
+            for oid in des:
+                try:
                     obj = orb.get(oid)
                     if not obj:
                         orb.log.debug(f' - obj with oid "{oid}" not found')
@@ -2071,19 +2165,28 @@ class RepositoryService(ApplicationSession):
                     else:
                         orb.log.debug(f' - not auth for obj with oid "{oid}"')
                         continue
-                if modified:
-                    mod_dt = dtstamp()
-                    dez_dts = str(mod_dt)
-                    state['dez_dts'] = dez_dts
-                    channel = 'vger.channel.public'
-                    # publish on public channel
-                    # orb.log.info('  + publishing data elements to "public" ...')
-                    self.publish(channel,
-                                 {'data elements set': (modified, dez_dts)})
-                    return dez_dts
-                else:
-                    return 'failure'
-            except:
+                except Exception as e:
+                    orb.log.error(f'  setting des for "{oid}" failed: {e}')
+                    failed_oids.append(oid)
+                    # do not report a partially-populated entry as modified
+                    modified.pop(oid, None)
+            if failed_oids:
+                n = len(failed_oids)
+                orb.log.error(f'  {n} oid(s) failed: {failed_oids}')
+            if not modified:
+                return 'failure'
+            try:
+                mod_dt = dtstamp()
+                dez_dts = str(mod_dt)
+                state['dez_dts'] = dez_dts
+                channel = 'vger.channel.public'
+                # publish on public channel
+                # orb.log.info('  + publishing data elements to "public" ...')
+                self.publish(channel,
+                             {'data elements set': (modified, dez_dts)})
+                return dez_dts
+            except Exception as e:
+                orb.log.error(f'  publishing "data elements set" failed: {e}')
                 return 'failure'
 
         yield self.register(set_data_elements, 'vger.set_data_elements',
@@ -2161,19 +2264,36 @@ class RepositoryService(ApplicationSession):
             user_obj = orb.select('Person', id=userid)
             prop_mods = {}
             prop_mod_fails = {}
-            try:
-                for oid, prop_dict in props.items():
-                    prop_mods[oid] = {}
-                    prop_mod_fails[oid] = {}  
+            failed_oids = []
+            # NOTE: as in set_parameters(), each oid gets its own try/except so
+            # that one bad item does not abandon the rest of the batch
+            for oid, prop_dict in props.items():
+                try:
                     obj = orb.get(oid)
+                    if not obj:
+                        orb.log.debug(f'  obj with oid "{oid}" not found')
+                        continue
                     perms = get_perms(obj, user=user_obj)
-                    if "modify" in perms:
-                        for prop_id, value in prop_dict.items():
-                            status = orb.set_prop_val(oid, prop_id, value)
-                            if status == 'succeeded':
-                                prop_mods[oid][prop_id] = value
-                            else:
-                                prop_mod_fails[oid][prop_id] = status
+                    if "modify" not in perms:
+                        orb.log.debug(f'  not auth for obj with oid "{oid}"')
+                        continue
+                    prop_mods[oid] = {}
+                    prop_mod_fails[oid] = {}
+                    for prop_id, value in prop_dict.items():
+                        status = orb.set_prop_val(oid, prop_id, value)
+                        if status == 'succeeded':
+                            prop_mods[oid][prop_id] = value
+                        else:
+                            prop_mod_fails[oid][prop_id] = status
+                except Exception as e:
+                    orb.log.error(f'  setting props for "{oid}" failed: {e}')
+                    failed_oids.append(oid)
+                    # do not report a partially-populated entry as modified
+                    prop_mods.pop(oid, None)
+            if failed_oids:
+                n = len(failed_oids)
+                orb.log.error(f'  {n} oid(s) failed: {failed_oids}')
+            try:
                 oids = list(prop_mods)
                 mod_dt = dtstamp()
                 mod_dt_str = str(mod_dt)
@@ -2191,8 +2311,8 @@ class RepositoryService(ApplicationSession):
                 self.publish(channel, {'properties set':
                                        (prop_mods, mod_dt_str)})
                 return 'success'
-            except:
-                orb.log.info('  + operation failed!')
+            except Exception as e:
+                orb.log.error(f'  + operation failed: {e}')
                 return 'failure'
 
         yield self.register(set_properties, 'vger.set_properties',
@@ -3178,6 +3298,7 @@ if __name__ == '__main__':
     config['cb_url'] = cb_url
     # router can auto-choose the realm, so unnecessary to specify but ...
     realm = 'pangalactic-services'
+    config['realm'] = realm
     # write the new config file
     write_config(os.path.join(home, 'config'))
     if config.get('self_signed_cert'):
