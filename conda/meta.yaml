@@ -12,6 +12,8 @@ requirements:
 
   run:
     - autobahn
+    - base58
+    - ecdsa
     - openldap
     - pangalactic.core >=4.4.dev3
     - postgresql
