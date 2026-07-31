@@ -381,6 +381,24 @@ non-issue: the caller's *identity* can be trusted, but `save()`'s
 *authorization logic* substitutes a client-supplied payload field
 (`creator`) for the identity check it should be doing instead.
 
+## Carried forward to the next `vger` pass
+
+- **`get_parmz`'s `oids` branch can emit `None` values.**
+  `{oid: parameterz.get(oid) for oid in oids}` yields `None` for any oid the
+  server does not know about. The client's
+  `on_vger_get_parmz_result` does `parameterz.update(parmz_data)`, so a
+  `None` would be written straight into the cache where every consumer
+  expects a dict. **Unreachable today** — the client only ever calls
+  `get_parmz()` with no arguments, which takes the other branch and returns
+  the whole cache — but it is a trap waiting for the first caller that passes
+  `oids`. Fix on the server side: skip unknown oids rather than emitting
+  `None` for them.
+
+  Noted while reviewing the client's parameter handling; see
+  `pangalactic.node/pangalaxian_handlers_review.md` #2, which also records
+  why the client's wholesale replacement of `parameterz` is correct and must
+  not be softened into a merge.
+
 ## Status summary (2026-07-31)
 
 Findings **#1, #2, #3, #4, #6, #7, #8 are fixed** in `vger.py`; each is
