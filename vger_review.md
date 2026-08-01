@@ -381,6 +381,25 @@ non-issue: the caller's *identity* can be trusted, but `save()`'s
 *authorization logic* substitutes a client-supplied payload field
 (`creator`) for the identity check it should be doing instead.
 
+## Missed by this review — found by the test suite
+
+- **`get_object` was registered under the name `vger.get_mod_dts`**
+  (`yield self.register(get_object, 'vger.get_mod_dts')`). So that RPC took
+  the wrong arguments, and `get_mod_dts` — defined immediately above it — was
+  never registered at all. Latent, because clients use their own local
+  `orb.get_mod_dts`. Found and fixed on the optional-LDAP branch by a test
+  asserting that each registered *name* corresponds to the expected
+  *function*; **this pass reviewed `vger.py` in full and did not catch it.**
+  Worth recording as a lesson about what manual review is bad at: the
+  registration block is 46 near-identical `yield self.register(...)` lines,
+  and a copy-paste substitution in one of them reads as correct.
+
+  (A second bug was found at the same time in `userdir.py` —
+  `search_ldap_directory()` raised `UnboundLocalError` when no `ldap_schema`
+  was configured, since `f` was only initialized inside the `if schema:`
+  branch but used unconditionally. That module was explicitly out of scope
+  for this pass, per the scope note at the top.)
+
 ## Carried forward to the next `vger` pass
 
 - **`get_parmz`'s `oids` branch can emit `None` values.**
@@ -419,11 +438,22 @@ imported in an environment without `python-ldap`, because
 `pangalactic/vger/userdir.py` does a bare top-level `import ldap` which
 `vger.py` imports at module level. The checks above were therefore run with
 `sys.modules['ldap']` stubbed, and the RPC handlers — which are closures
-inside `RepositoryService.onJoin` and so not reachable without a WAMP session
-— were exercised by transcribing the pre-fix and post-fix blocks verbatim and
-running both against a real orb with the standard test fixtures. Making LDAP
-a conditional dependency, and lifting the handlers somewhere they can be
-called directly, are both prerequisites for a genuine vger test suite.
+inside `RepositoryService.onJoin` — were exercised by transcribing the
+pre-fix and post-fix blocks verbatim and running both against a real orb with
+the standard test fixtures.
+
+**Correction to that last point (2026-07-31).** I claimed the handlers were
+"not reachable without a WAMP session" and that lifting them out of `onJoin`
+was a prerequisite for testing. That was wrong. `onJoin` is an
+`@inlineCallbacks` generator whose only session interactions are `register`,
+`subscribe`, `publish` and `log`; with a stand-in session returning
+already-fired Deferreds it runs synchronously and **all 42 RPCs can be
+captured and called directly, with no production change**. Finding #2's
+creator-spoofing case has since been re-run against the *real* `vger.save`
+handler rather than a transcription, with the same result (refused, reported
+in `unauth`, object unchanged, nothing published). See `NOTES_ON_TESTING.md`.
+Only the `python-ldap` import is a genuine blocker, and it is being addressed
+separately.
 
 ## Suggested fix order (as originally written; all now addressed)
 
