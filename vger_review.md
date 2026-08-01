@@ -431,6 +431,20 @@ instead of duplicating them. The update branch also no longer reassigns
 `oid` — it is the primary key, and a person matched by userid will not have
 the submitted one.
 
+> **DO NOT "fix" the unconditional `INSERT INTO users` in the principals db.**
+> A user having **any number of public keys associated with their userid is an
+> intended feature** (author, 2026-08-01): re-adding a person with a new
+> public key adds another row, and any of their keys then authenticates them.
+> This is the supported recovery path for the common case of a user losing or
+> deleting their `private.key` file — there is no other way to re-credential
+> them. The absence of a dedupe or replace there reads like an oversight and
+> is not one.
+>
+> The userid fallback added above is compatible with this by construction: a
+> re-add matches the existing `Person` by userid and **updates** them, while
+> still inserting the new key row. Confirmed live — re-registering the same
+> user left one `Person` in the roster, with the newly added key working.
+
 **Verified by execution** (real orb, standard fixtures, handler driven through
 the capture harness):
 
@@ -440,10 +454,27 @@ the capture harness):
 | same userid again, still no oid | **1** Person with that id — updated, not duplicated; oid unchanged |
 | non-admin caller | refused |
 
-*Still to verify live:* `pk_added` was `False` in the local run because there
-is no `principals.db` at the configured `auth_db_path` — which is precisely
-what the new startup warning reports. Confirming that the public key lands in
-the db, and that the new user can then authenticate, needs a redeployed vger.
+**Verified live against marvin (2026-08-01), end to end.** With the fixes
+deployed, the payload produced by the real `AddPersonDialog` (no LDAP schema
+configured) was sent as `vger.add_person`:
+
+```
+connected as authid='admin' role='user'
+add_person -> pk_added=True
+  created/updated: Person reno
+```
+and then, connecting with the *new user's* freshly generated private key:
+```
+connected as authid='reno' role='user'
+people: 10 ... [key] reno
+```
+
+That closes the whole chain: New User form → payload → `add_person` → oid
+generated server-side → public key registered in the authenticator's
+`principals.db` → the new user authenticates and appears as an active user.
+`pk_added` was `False` in the earlier *local* run only because there is no
+`principals.db` at the configured `auth_db_path` there — which is exactly what
+the new startup warning reports.
 
 *(Considered and rejected, for the record: using the userid as the oid, since
 it is unique. It would break federation across separate vger environments,
