@@ -200,7 +200,9 @@ the `parameters` / `data_elements` sections that ride along with objects.
 
 ## 5. Known limitations of this approach
 
-State them plainly so the suite is not over-trusted:
+State them plainly so the suite is not over-trusted. **§8 is the answer to the
+first three** — running vger for real against a crossbar router is what covers
+the WAMP layer, real cryptosign identity, and `RepositoryService.__init__`.
 
 - **It does not test the WAMP layer.** Authentication (`authenticator.py`,
   cryptosign), the crossbar router, serialization over the wire, and
@@ -290,3 +292,200 @@ test README for how to run just the fast half while iterating.
   handler-capture harness deliberately bypasses.
 - `get_parmz(oids=[...])` emitting `None` for unknown oids (the carried-forward
   item in `vger_review.md`) — worth a test with the fix.
+
+## 8. Interactive testing against a live crossbar router
+
+This is the complement to the unit suite, and the answer to the first three
+limitations in §5: it is the only way to exercise the WAMP layer, real
+WAMP-cryptosign authentication, `RepositoryService.__init__`, and the
+`RegisterOptions` semantics *as crossbar enforces them* rather than as vger
+requests them.
+
+This section replaces the shorter recipe that used to live in
+`pangalactic/vger/test/README.md`, which assumed a home directory and key
+material that already existed.
+
+### 8.1 What must exist first
+
+**The home directory.** Anything you like — `vger_test` is fine, the path may
+be relative, and it does **not** have to be under the user's home directory
+(`--home` is passed straight through to `orb.start()`).
+
+> **It must exist before vger starts.** `orb.start()` with a non-existent home
+> copies the reference db *as a file* at that path and then raises
+> `NotADirectoryError`, leaving a ~331 KB file with your home directory's name
+> that `rm -rf` will not remove (it is a file, not a directory). See the
+> deferred `orb.start()` finding in
+> `pangalactic.core/pangalactic_core_review_scoped.md`.
+
+**A `config` file — not actually required.** Verified by execution:
+`read_config()` returns quietly when the file is missing *and* when it is
+empty, and `__main__` calls `write_config()` afterwards, which creates it. So
+an empty file works and no file works; either way vger writes a populated one
+on first start. The defaults it falls back to are:
+
+| setting | default |
+|---|---|
+| `db_url` | `postgresql://scred@localhost:5432/vgerdb` |
+| `cb_host` / `cb_port` | `localhost` / `8080` |
+| `realm` | `pangalactic-services` |
+| `test` / `debug` | `True` |
+
+The one setting you are likely to need explicitly is `auth_db_path` — see
+§8.4.
+
+**The database.** `db_url` must point at a Postgres database that exists;
+vger does not create it. Per `pangalactic/vger/test/run_vger_test.sh`, a local
+cluster can be initialised and started under the home directory:
+
+```bash
+pg_ctl init  -D vger_test/vgerdb
+pg_ctl start -D vger_test/vgerdb
+```
+with `--db_url postgresql://<user>@localhost:5432/vgerdb` naming the local
+user that owns it.
+
+**`vger.key` in the home directory** — vger's private key, raw format, read as
+`os.path.join(home, 'vger.key')`. This is the piece the old recipe omitted
+entirely, and vger cannot join the router without it.
+
+**`server_cert.pem` in the home directory**, but only if `self_signed_cert`
+is set in the config — `__main__` reads it to build the `CertificateOptions`
+trust root. (Separately, crossbar needs its own `server_key.pem` /
+`server_cert.pem` inside `.crossbar_for_test_vger`; those names are fixed by
+`.crossbar_for_test_vger/config.json`.)
+
+`--cert` selects it: a **bare file name** is looked for in the home directory
+(default `server_cert.pem`), and a **full path** is used as given, so a remote
+host's certificate can live anywhere. It can equally be set as `cert` in the
+config.
+
+> *(`--cert` was defined but never read until 2026-08-01 — the filename was
+> hardcoded — so on older checkouts the cert must be at
+> `[home]/server_cert.pem` under exactly that name. See `vger_review.md`.)*
+
+**Pointing at a remote crossbar** (e.g. a router on another host) uses
+`--cb_host <address>` and `--cb_port <port>` (default 8080), with `--cert`
+naming that host's certificate.
+
+### 8.2 Generating vger's key pair
+
+Same shape as the client's `gen_keys()`. **Verified by execution** — the
+generated key loads back through `CryptosignKey.from_file()` and yields a
+64-character hex public key:
+
+```python
+import os
+from nacl.public import PrivateKey
+from autobahn.wamp import cryptosign
+
+home = 'vger_test'                       # your home directory
+key_path = os.path.join(home, 'vger.key')
+
+privkey = PrivateKey.generate()
+with open(key_path, 'wb') as f:
+    f.write(privkey.encode())
+os.chmod(key_path, 0o600)                # private key: keep it unreadable
+
+print(cryptosign.CryptosignKey.from_file(key_path).public_key())
+```
+
+Print that public key — the next step needs it.
+
+### 8.3 Getting the public key into `principals.db`
+
+The router authenticates vger by looking its **public** key up in the
+authenticator's sqlite db, so a freshly generated key pair is useless until
+its public half is registered, with the role `service` (not `user`).
+
+`authenticator.py` builds `principals.db` from `principals.json` on first
+start *if the db does not already exist*. So the easy path is: edit
+`principals.json` **before** the db has ever been created, replacing the
+`vger` entry's `pubkey` with the one you just printed:
+
+```json
+   {
+      "pubkey": "<the 64-char hex public key>",
+      "authid": "vger",
+      "role": "service"
+   }
+```
+
+If `principals.db` already exists, `principals.json` is ignored and you must
+update the db directly:
+
+```python
+import sqlite3
+conn = sqlite3.connect('/node/principals.db')     # see 8.4 about this path
+c = conn.cursor()
+c.execute('INSERT OR REPLACE INTO users VALUES (?, ?, ?)',
+          ('<hex public key>', 'vger', 'service'))
+conn.commit()
+conn.close()
+```
+
+The test `principals.json` in `pangalactic/vger/test/` also carries entries
+for `admin`, `zaphod` and `buckaroo` with role `user`, which is what lets the
+GUI clients log in with `zaphod.key` / `buckaroo.key`.
+
+### 8.4 Making vger and the authenticator agree on `principals.db`
+
+**This is the step most likely to be got wrong**, because the two ends resolve
+the path independently:
+
+- the **authenticator** runs inside crossbar and reads
+  `$PGEF_PRINCIPALS_DIR/principals.db`, defaulting to `/node/principals.db`
+  (the directory mapped into the crossbar *docker* service);
+- **vger** writes newly added users' public keys to
+  `config['auth_db_path']`, defaulting to
+  `[orb.home]/crossbar/principals.db`.
+
+Under docker these are the same file. **Anywhere else they are not**, and the
+symptom is nasty: adding a user appears to succeed, but their key goes into a
+db the router never reads, so they simply cannot log in.
+
+For a local run, set both to the same place — export the variable in the
+shell that starts crossbar, and set `auth_db_path` in vger's config:
+
+```bash
+export PGEF_PRINCIPALS_DIR=$PWD/vger_test/crossbar     # before crossbar start
+```
+```yaml
+# vger_test/config
+auth_db_path: /full/path/to/vger_test/crossbar/principals.db
+```
+
+Put `principals.json` in that directory too, and the authenticator will build
+`principals.db` from it on first start.
+
+vger now logs `auth db (principals): '<path>'` at startup and logs an
+**error** if the file is not there, so a mismatch is visible immediately
+rather than at the first attempt to add a user.
+
+> *(Before 2026-08-01 the authenticator's paths were hardcoded and could not
+> be configured at all, so a non-docker run needed `/node` itself to exist.
+> See `vger_review.md`.)*
+
+### 8.5 Running it
+
+```bash
+# [1] start the crossbar router (from pangalactic/vger/test/)
+./crossbar_for_test_vger.sh
+
+# [2] start vger, in another shell
+python pangalactic/vger/vger.py \
+    --home vger_test \
+    --db_url postgresql://<user>@localhost:5432/vgerdb \
+    --debug \
+    --test
+```
+
+`--test` loads the standard test project and users, so a GUI client can log in
+and exercise real round trips. Startup logs the home directory, crossbar url,
+realm, db url, and — since the optional-LDAP change — a note when python-ldap
+is not installed.
+
+If vger exits immediately, check in this order: home directory exists;
+`vger.key` present and readable; its public key registered in the db the
+*authenticator* reads; Postgres reachable at `db_url`; and, if
+`self_signed_cert` is set, `server_cert.pem` present in the home directory.

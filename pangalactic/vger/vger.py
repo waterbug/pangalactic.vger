@@ -195,7 +195,10 @@ class RepositoryService(ApplicationSession):
         orb.log.info(f"    home directory:  '{home}'")
         orb.log.info(f"    connecting to crossbar at:  '{cb_url}'")
         orb.log.info(f"        realm:  '{realm}'")
-        orb.log.info("        server cert:  'server_cert.pem'")
+        # NOTE: log the cert actually in use -- this used to be the hardcoded
+        # string 'server_cert.pem' regardless of configuration
+        orb.log.info("        server cert:  '{}'".format(
+                                    config.get('cert') or 'server_cert.pem'))
         orb.log.info(f"    db url: '{db_url}'")
         orb.log.info(f"    ldap url: '{ldap_url}'")
         orb.log.info(f"    base_dn: '{base_dn}'")
@@ -203,6 +206,25 @@ class RepositoryService(ApplicationSession):
             # python-ldap is an optional dependency (install the "ldap" extra
             # if LDAP directory searches are needed)
             orb.log.info(f"    [note] {LDAP_NOT_AVAILABLE}")
+        # ------------------------------------------------------------------
+        # NOTE: report the principals db at startup.  add_person() writes new
+        # users' public keys here, while the crossbar authenticator component
+        # reads its own (PGEF_PRINCIPALS_DIR, default "/node") -- if the two
+        # do not name the same file, a user can be added successfully and
+        # still be unable to log in.  Previously that only became apparent the
+        # first time someone was added, and only from an "info" line.
+        # ------------------------------------------------------------------
+        # NOTE: orb.home (not the "home" kwarg) -- add_person() computes its
+        # default the same way, and the orb may have resolved a different home
+        auth_db_path = config.get('auth_db_path') or os.path.join(
+                                    orb.home, 'crossbar', 'principals.db')
+        orb.log.info(f"    auth db (principals): '{auth_db_path}'")
+        if not os.path.exists(auth_db_path):
+            orb.log.error("    [!] principals db not found at that path --")
+            orb.log.error("        adding a user will not register their")
+            orb.log.error("        public key, so they will not be able to")
+            orb.log.error("        log in.  Set 'auth_db_path' in config to")
+            orb.log.error("        the db the crossbar authenticator reads.")
         orb.log.info(f"    test: '{test}'")
         orb.log.info(f"    debug: '{debug}'")
         orb.log.info(f"    console: '{console}'")
@@ -3272,7 +3294,10 @@ class RepositoryService(ApplicationSession):
 
 if __name__ == '__main__':
     home_help = 'home directory (used by orb) [default: current directory]'
-    cert_help = 'crossbar host cert file name [default: "server_cert.pem"].'
+    cert_help = ('crossbar host cert: a bare file name is looked for in the '
+                 'home directory; a full path is used as given (so a remote '
+                 'crossbar host\'s cert can live anywhere) '
+                 '[default: "server_cert.pem"].')
     parser = argparse.ArgumentParser()
     parser.add_argument('--home', dest='home', type=str,
                         help=home_help)
@@ -3282,8 +3307,11 @@ if __name__ == '__main__':
                         help='crossbar host [default: localhost].')
     parser.add_argument('--cb_port', dest='cb_port', type=int,
                         help='crossbar port [default: 8080].')
-    parser.add_argument('--cert', dest='cert', type=str,
-                        default='server_cert.pem', help=cert_help)
+    # NOTE: default is '' (not 'server_cert.pem') so that the option / config /
+    # default precedence below works the same way it does for every other
+    # setting -- a non-empty argparse default would always win over config
+    parser.add_argument('--cert', dest='cert', type=str, default='',
+                        help=cert_help)
     parser.add_argument('-d', '--debug', dest='debug', action='store_true',
                         help='Set logging level to DEBUG')
     parser.add_argument('-t', '--test', dest='test', action='store_true',
@@ -3314,22 +3342,35 @@ if __name__ == '__main__':
     # router can auto-choose the realm, so unnecessary to specify but ...
     realm = 'pangalactic-services'
     config['realm'] = realm
+    cert_fname = options.cert or config.get('cert') or 'server_cert.pem'
+    config['cert'] = cert_fname
     # write the new config file
     write_config(os.path.join(home, 'config'))
     if config.get('self_signed_cert'):
         # crossbar is using a self-signed cert, so it must be used in creating
-        # CertificateOptions (default: file 'server_cert.pem' in home
-        # directory)
-        cert_fname = 'server_cert.pem'
-        cert_fpath = os.path.join(home, cert_fname)
-        cert_content = crypto.load_certificate(crypto.FILETYPE_PEM,
-                                               str(open(cert_fpath, 'r').read()))
+        # CertificateOptions.  A bare file name is resolved in the home
+        # directory (the default, 'server_cert.pem'); a full path is used as
+        # given, so a remote crossbar host's cert can live anywhere.
+        if os.path.isabs(cert_fname):
+            cert_fpath = cert_fname
+        else:
+            cert_fpath = os.path.join(home, cert_fname)
+        # NOTE: the open() and load_certificate() calls belong *inside* the
+        # try -- they used to be outside it, so a missing or malformed cert
+        # raised an uncaught traceback and the message below (which names
+        # exactly that case) could never be reached.  Using "with" also closes
+        # the file, which the previous str(open(...).read()) did not.
         try:
+            with open(cert_fpath) as f:
+                cert_content = crypto.load_certificate(crypto.FILETYPE_PEM,
+                                                       f.read())
             tls_options = CertificateOptions(
                         trustRoot=OpenSSLCertificateAuthorities([cert_content]))
-        except:
-            print("Could not find self-signed cert -- exiting.")
-            sys.exit()
+        except Exception as e:
+            print(f'Could not load self-signed cert "{cert_fpath}":')
+            print(f'  {e}')
+            print('  -- exiting.')
+            sys.exit(1)
     else:
         # crossbar is using a CA-signed cert ...
         tls_options = CertificateOptions()

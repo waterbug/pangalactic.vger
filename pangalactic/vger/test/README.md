@@ -53,22 +53,18 @@ Also note that `import pangalactic.core.set_uberorb` must come before any
 `from pangalactic.core... import` that pulls in `orb` (e.g. `access.py`), since
 that name does not exist until `set_uberorb` has run.
 
-# Interactive testing for pangalactic.vger (repository server)
+# Interactive testing against a live crossbar router
 
-[0] get or create a private key and certificate for localhost and copy them
-    into the `.crossbar_for_test_vger` directory and name them server_key.pem
-    and server_cert.pem, respectively (crossbar's config file,
-    .crossbar_for_test_vger/config.json, specifies those names).
+The unit tests here deliberately do not exercise the WAMP layer:  no router,
+no cryptosign authentication, and `RepositoryService.__init__` is bypassed.
+Running vger for real against crossbar is what covers those, and it is the
+complement to this suite rather than a part of it.
 
-[1] start crossbar message server:
+The full recipe -- home directory, private key generation, getting vger's
+public key into the authenticator's `principals.db`, crossbar's certificates,
+and the path gotchas -- is in **`NOTES_ON_TESTING.md`, section 8**, at the top
+of this package.
 
-    ./crossbar_for_test_vger.sh
-
-[2] start vger:
-
-    python ~/pangalactic.vger/pangalactic/vger/vger.py \
-        --home ~/vger_home \
-        --db_url postgresql://user@localhost:5432/vgerdb \
-        --debug \
-        --test
+`crossbar_for_test_vger.sh` and `principals.json` in this directory are part
+of that setup.
 

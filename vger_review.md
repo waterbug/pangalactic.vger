@@ -402,6 +402,84 @@ non-issue: the caller's *identity* can be trusted, but `save()`'s
 
 ## Carried forward to the next `vger` pass
 
+- **`--cert` is a dead command-line option.** `__main__` defines it
+  (`parser.add_argument('--cert', dest='cert', type=str,
+  default='server_cert.pem', ...)`) but **never reads `options.cert`**: the
+  self-signed-cert branch hardcodes `cert_fname = 'server_cert.pem'` and joins
+  it to `home`. So `--cert /path/to/other_cert.pem` is accepted and silently
+  ignored, and the certificate must be in the home directory under exactly
+  that name.
+
+  This is not merely cosmetic: `pangalactic/vger/test/run_vger_test.sh`
+  documents `--cert ~/remote_server_cert.pem` as the way to point vger at a
+  **remote** crossbar host, so the documented workflow for the remote case
+  does not work. Same shape as the `--key` option bug in
+  `pangalaxian.py` (see `node_startup_review.md` #1) — an option that parses
+  but is never honoured.
+
+  **STATUS: FIXED.** `cert_fname` is now resolved with the same
+  option/config/default precedence as every other setting (argparse default
+  changed to `''` so config can win), stored in `config['cert']` before
+  `write_config()`, and a **bare name is resolved in the home directory while
+  a full path is used as given** — so the remote-host workflow
+  `run_vger_test.sh` documents now works. Verified across all five
+  precedence/shape combinations.
+
+  Two further defects in the same ten lines, fixed with it:
+  - **the `try` was in the wrong place.** `open()` and `load_certificate()`
+    sat *outside* it, so a missing or malformed cert raised an uncaught
+    `FileNotFoundError` and the message that names exactly that case
+    (`"Could not find self-signed cert -- exiting."`) was unreachable.
+    Verified: pre-fix a missing cert gives a traceback, post-fix a clean
+    message and `sys.exit(1)`.
+  - **the cert file was never closed** — `str(open(cert_fpath, 'r').read())`,
+    now a `with` block.
+
+  Also: `__init__` logged `server cert: 'server_cert.pem'` as a hardcoded
+  string regardless of configuration; it now logs the cert actually in use.
+
+- **vger and the authenticator disagree about where `principals.db` is.**
+  `vger.add_person()` writes a new user's public key to
+  `config.get('auth_db_path', os.path.join(orb.home, 'crossbar',
+  'principals.db'))`, while `authenticator.py` reads the **hardcoded absolute
+  path** `/node/principals.db` (and `/node/principals.json`), which its
+  docstring documents as the directory mapped into the crossbar *docker*
+  service. In the docker deployment the two coincide; anywhere else they do
+  not, so a person added through the admin tool gets a public key written to a
+  db the router never reads — and that user then cannot authenticate.
+
+  *Correction to an earlier draft of this entry, which said there was "nothing
+  in either log to say why".* That was wrong on both counts, and the real
+  behaviour is worth stating precisely:
+  - **vger does log it.** `add_person` has an `else:` branch — `path
+    "{auth_db_path}" not found -- could not add public key` — at `info`.
+  - **The client is told, but weakly.** `add_person` returns
+    `(pk_added, ser_objs)` and `admin.on_person_added_success` builds
+    `'Person "X" has been added'` and appends `' with public key'` **only
+    when `pk_added` is True**. So the administrator gets a cheerful "Person
+    Added" popup either way, differing only by four missing words. The
+    failure is visible in principle and easy to miss in practice.
+
+  Found while writing the interactive-testing recipe
+  (`NOTES_ON_TESTING.md` §8.4), not during the original pass —
+  `authenticator.py` was in scope only as far as the "Verified assumption"
+  note below.
+
+  **STATUS: FIXED.** `authenticator.py` now derives its paths from
+  `PGEF_PRINCIPALS_DIR`, **defaulting to `/node`** so docker deployments are
+  unaffected, and logs which principals db it is using when it starts. The
+  authenticator runs inside crossbar and cannot read vger's config, so an
+  environment variable set where crossbar is started is the available channel.
+  Verified: with the variable unset the paths are exactly as before; with it
+  set they follow it, and can be pointed at the same file as vger's
+  `auth_db_path`.
+
+  Paired with a **startup check in vger**: `auth_db_path` is now logged with
+  the other settings, and if it does not exist vger logs at `error` that
+  adding a user will not register their public key. Previously the mismatch
+  only surfaced at `info` level the first time somebody was added — which is
+  precisely why it went unnoticed.
+
 - **`get_parmz`'s `oids` branch can emit `None` values.**
   `{oid: parameterz.get(oid) for oid in oids}` yields `None` for any oid the
   server does not know about. The client's
