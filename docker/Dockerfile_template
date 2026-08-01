@@ -31,6 +31,9 @@ ENV PATH="/home/crossbar/miniforge3/bin:$PATH"
 EXPOSE 65432
 RUN conda update conda \
  # force installs of python-ldap and psycopg2
+ # NOTE: python-ldap is optional (vger only needs it for deployments whose
+ # user identities come from an LDAP personnel directory) -- this line can be
+ # dropped for deployments that do not use LDAP
  && conda install -c conda-forge python-ldap \
  && conda install -c conda-forge psycopg2 \
  && conda install -c conda-forge supervisor \

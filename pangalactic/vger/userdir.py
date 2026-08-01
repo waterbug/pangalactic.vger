@@ -1,9 +1,24 @@
 """
 Generic search interface to an LDAP user directory.
+
+NOTE: python-ldap is an *optional* dependency -- it is only needed by
+deployments whose user identities come from an LDAP personnel directory.  If it
+is not installed, this module still imports (so that vger can run without it)
+and search_ldap_directory() reports that LDAP is not available.
 """
-import ldap
+try:
+    import ldap
+    LDAP_AVAILABLE = True
+except ImportError:
+    ldap = None
+    LDAP_AVAILABLE = False
+
 from pangalactic.core         import config
 from pangalactic.core.uberorb import orb
+
+# message returned in place of the LDAP search string when python-ldap is not
+# installed (see search_ldap_directory())
+LDAP_NOT_AVAILABLE = 'LDAP not available (python-ldap is not installed)'
 
 def search_by_filterstring(ldap_url, base_dn, filterstring, sizelimit=0):
     """
@@ -23,7 +38,12 @@ def search_by_filterstring(ldap_url, base_dn, filterstring, sizelimit=0):
     Returns:
         result_set (list): result of ldap search (see python-ldap docs for the
             result format), which will be parsed by _get_dir_info()
+
+    Raises:
+        RuntimeError: if python-ldap is not installed
     """
+    if not LDAP_AVAILABLE:
+        raise RuntimeError(LDAP_NOT_AVAILABLE)
     # NOTE: all of these fields are ok as python 3 'strings' (unicode)
     l = ldap.initialize(ldap_url)
     l.simple_bind_s('','')
@@ -105,7 +125,10 @@ def search_ldap_directory(ldap_url, base_dn, test=None, **kw):
             result to test the client's handling of it
 
     Return:
-        tuple: (LDAP search string (str), result records (list of dict))
+        tuple: (LDAP search string (str), result records (list of dict)) -- if
+            python-ldap is not installed, the LDAP_NOT_AVAILABLE message is
+            returned in place of the search string, with an empty result (the
+            "test" modes do not require python-ldap and are unaffected)
     """
     orb.log.info('* userdir: search_ldap_directory()')
     orb.log.info('  ldap_url = {}'.format(ldap_url))
@@ -177,6 +200,10 @@ def search_ldap_directory(ldap_url, base_dn, test=None, **kw):
                      email='manyjars@redlectroids.planet10.univ',
                      employer_name='Yoyodyne')
                      ])
+    if not LDAP_AVAILABLE:
+        # a live directory search is only possible with python-ldap installed
+        orb.log.info('  {}'.format(LDAP_NOT_AVAILABLE))
+        return (LDAP_NOT_AVAILABLE, [])
     # NOTE: the *field values* in res will be bytes
     res = search_by_filterstring(ldap_url, base_dn, f)
     people = []

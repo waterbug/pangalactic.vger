@@ -14,7 +14,6 @@ requirements:
     - autobahn
     - base58
     - ecdsa
-    - openldap
     - pangalactic.core >=4.4.dev3
     - postgresql
     - psycopg2
@@ -22,9 +21,13 @@ requirements:
     - pynacl
     - pyopenssl >=22.1.0
     - python {{PY_VER}}
-    - python-ldap
     - scipy
     - twisted
+    # NOTE: LDAP support (pangalactic.vger.userdir) is optional -- it is only
+    # needed by deployments whose user identities come from an LDAP personnel
+    # directory.  For those, add to this environment:
+    #     - openldap
+    #     - python-ldap
 
 about:
   # home: https://pangalactic.us
