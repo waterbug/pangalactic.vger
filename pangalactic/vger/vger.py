@@ -102,7 +102,9 @@ from pangalactic.core.utils.datetimes  import dtstamp, earlier, file_date_stamp
                                                # get_lom_parm_data,
                                                # get_optical_surface_names,
                                                # extract_lom_structure)
-from pangalactic.vger.userdir          import search_ldap_directory
+from pangalactic.vger.userdir          import (LDAP_AVAILABLE,
+                                               LDAP_NOT_AVAILABLE,
+                                               search_ldap_directory)
 
 
 test_mel_parms = ['m', 'P', 'R_D',
@@ -197,6 +199,10 @@ class RepositoryService(ApplicationSession):
         orb.log.info(f"    db url: '{db_url}'")
         orb.log.info(f"    ldap url: '{ldap_url}'")
         orb.log.info(f"    base_dn: '{base_dn}'")
+        if not LDAP_AVAILABLE:
+            # python-ldap is an optional dependency (install the "ldap" extra
+            # if LDAP directory searches are needed)
+            orb.log.info(f"    [note] {LDAP_NOT_AVAILABLE}")
         orb.log.info(f"    test: '{test}'")
         orb.log.info(f"    debug: '{debug}'")
         orb.log.info(f"    console: '{console}'")
@@ -2904,7 +2910,7 @@ class RepositoryService(ApplicationSession):
             orb.log.info('* [rpc] vger.get_mod_dts() ...')
             return orb.get_mod_dts(cnames=cnames, oids=oids)
 
-        yield self.register(get_object, 'vger.get_mod_dts')
+        yield self.register(get_mod_dts, 'vger.get_mod_dts')
 
         def get_user_roles(userid, data=None, version=None, cb_details=None):
             """
@@ -3032,6 +3038,12 @@ class RepositoryService(ApplicationSession):
             Returns:
                 list:  list containing dicts of info on persons in the LDAP
                     directory
+
+            NOTE: LDAP support requires python-ldap, which is an optional
+            dependency -- if it is not installed or LDAP is not configured, a
+            message is returned in place of the search string, with an empty
+            result (the "known_users" search does not use LDAP and is
+            unaffected).
             """
             orb.log.info('* [rpc] vger.search_ldap')
             ldap_url = config.get('ldap_url') or ''
@@ -3054,10 +3066,13 @@ class RepositoryService(ApplicationSession):
                 msg = 'calling search_ldap_directory() with {}'.format(kw)
                 orb.log.info('      {}'.format(msg))
                 return search_ldap_directory(ldap_url, base_dn, **kw)
+            elif not LDAP_AVAILABLE:
+                orb.log.info('      {}'.format(LDAP_NOT_AVAILABLE))
+                return [LDAP_NOT_AVAILABLE, []]
             else:
-                # TODO:  return a message that ldap is not available ...
-                orb.log.info('      ldap is not available')
-                return []
+                msg = 'LDAP not available (ldap_url / base_dn not configured)'
+                orb.log.info('      {}'.format(msg))
+                return [msg, []]
 
         yield self.register(search_ldap, 'vger.search_ldap')
 

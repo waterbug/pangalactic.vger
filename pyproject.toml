@@ -32,6 +32,14 @@ classifiers = [
 # psycopg2, pynacl, ruamel_yaml.
 dependencies = []
 
+[project.optional-dependencies]
+# LDAP user-directory support (pangalactic.vger.userdir):  only needed by
+# deployments whose user identities come from an LDAP personnel directory.
+# Without it, vger runs normally and its "vger.search_ldap" rpc reports that
+# LDAP is not available.  NOTE: python-ldap also requires the openldap client
+# libraries (in a conda environment, the "openldap" package).
+ldap = ["python-ldap"]
+
 [project.urls]
 repository = "https://github.com/waterbug/pangalactic.vger"
 
