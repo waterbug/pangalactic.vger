@@ -3122,6 +3122,19 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('    {}'.format(msg))
                 # check if person is already in db ...
                 person = orb.get(data.get('oid'))
+                if not person and data.get('id'):
+                    # NOTE: the userid ("id") is the identity a user is known
+                    # by -- it becomes their "authid" in the authenticator's
+                    # principals db -- so it has to be unique.  Falling back to
+                    # it here means a caller that does not know the oid (e.g.
+                    # the "New User" form, where the oid is generated below)
+                    # updates the existing person rather than silently creating
+                    # a second one with the same userid, which would make the
+                    # userid -> oid mapping ambiguous.
+                    person = orb.select('Person', id=data['id'])
+                    if person:
+                        orb.log.info('  person not found by oid but userid '
+                                     '"{}" is in the repo.'.format(data['id']))
                 if person:
                     # TODO: if person is in the repo, update with data ...
                     orb.log.info('  person is in the repo; will update ...')
@@ -3180,6 +3193,12 @@ class RepositoryService(ApplicationSession):
                 if person:
                     # update person
                     for a in data:
+                        if a == 'oid':
+                            # NOTE: never reassign an existing object's oid --
+                            # it is the primary key, and when the person was
+                            # matched by userid (below) the submitted oid will
+                            # not be theirs
+                            continue
                         setattr(person, a, data[a])
                     person.mod_datetime = dts
                     orb.save([person], recompute=False)
@@ -3196,6 +3215,20 @@ class RepositoryService(ApplicationSession):
                                       'last_name'] if data.get(n)]
                         if name_tuple:
                             data['name'] = ' '.join(name_tuple)
+                    # NOTE: the oid is generated *here* when the caller does
+                    # not supply one.  "oid" is not nullable, so without this
+                    # creating a Person failed with an IntegrityError from the
+                    # database -- which meant a user could only ever be added
+                    # if an oid came in with the data, i.e. from an LDAP
+                    # directory record.  There is no reason a user needs to
+                    # know their own oid: the userid ("id") is what identifies
+                    # them, and it is what the oid is mapped to.  Note the
+                    # employer/org branches above already generate an oid this
+                    # same way for a new Organization.
+                    if not data.get('oid'):
+                        data['oid'] = str(uuid4())
+                        orb.log.info('  generated oid for new person: '
+                                     '{}'.format(data['oid']))
                     Person = orb.classes['Person']
                     person = Person(create_datetime=dts, mod_datetime=dts,
                                     **data)

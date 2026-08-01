@@ -381,6 +381,76 @@ non-issue: the caller's *identity* can be trusted, but `save()`'s
 *authorization logic* substitutes a client-supplied payload field
 (`creator`) for the identity check it should be doing instead.
 
+## Found by live testing against marvin (2026-08-01)
+
+Surfaced while testing the new non-LDAP "New User" flow
+(`pangalactic.node/admin_tool_review.md` #2) end to end against the live test
+server. Neither would have been found by reading, and neither was found by the
+unit suite — the first is a database constraint, the second only bites without
+LDAP.
+
+### A. `add_person()` could not create a Person at all — the oid was never generated
+
+`add_person` built the object as
+`Person(create_datetime=dts, mod_datetime=dts, **data)` with no `oid`, and
+`identifiable_.oid` is **not nullable**, so a genuinely new person failed with:
+
+```
+IntegrityError: (psycopg2.errors.NotNullViolation) null value in column "oid"
+of relation "identifiable_" violates not-null constraint
+DETAIL: Failing row contains (null, Person, reno, null, Reno Nevada, ...)
+```
+
+This is the *server-side* half of "add user is broken unless LDAP is being
+used": a user could only ever be added when an oid arrived with the data —
+i.e. from an LDAP directory record (`gargleblaster`'s schema maps `OID` →
+`oid`). The same function already generates an oid this way for a new
+`Organization` a few lines above, so it was an internal inconsistency as much
+as an omission.
+
+**STATUS: FIXED.** The oid is generated server-side with `uuid4()` when the
+caller does not supply one. Per the author, that is the right layer: a user
+has no need to know their own oid — the userid identifies them, and the oid is
+what it maps to.
+
+### B. Nothing enforced that the userid is unique
+
+`add_person` decided create-vs-update purely by `orb.get(data.get('oid'))`, so
+a caller supplying a new oid with an already-taken `id` would have created a
+**second** Person with the same userid — and since the userid becomes the
+`authid` in the authenticator's principals db, the userid → oid mapping would
+have become ambiguous.
+
+Per the author, production use assumed **LDAP** was responsible for userid
+uniqueness, which is not a safe assumption once users can be created without
+it.
+
+**STATUS: FIXED.** When no oid is supplied (or it matches nothing), the lookup
+now falls back to the userid, so such a call updates the existing person
+instead of duplicating them. The update branch also no longer reassigns
+`oid` — it is the primary key, and a person matched by userid will not have
+the submitted one.
+
+**Verified by execution** (real orb, standard fixtures, handler driven through
+the capture harness):
+
+| case | result |
+|---|---|
+| new person, **no oid supplied** | created; oid generated server-side |
+| same userid again, still no oid | **1** Person with that id — updated, not duplicated; oid unchanged |
+| non-admin caller | refused |
+
+*Still to verify live:* `pk_added` was `False` in the local run because there
+is no `principals.db` at the configured `auth_db_path` — which is precisely
+what the new startup warning reports. Confirming that the public key lands in
+the db, and that the new user can then authenticate, needs a redeployed vger.
+
+*(Considered and rejected, for the record: using the userid as the oid, since
+it is unique. It would break federation across separate vger environments,
+and it contradicts the established invariant that an oid is non-semantic and
+never caller-derivable — see the `clone()` discussion in
+`pangalactic.core/pangalactic_core_review_scoped.md`.)*
+
 ## Missed by this review — found by the test suite
 
 - **`get_object` was registered under the name `vger.get_mod_dts`**
