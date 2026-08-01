@@ -2790,7 +2790,7 @@ class RepositoryService(ApplicationSession):
             orb.log.info('* [rpc] vger.get_mod_dts() ...')
             return orb.get_mod_dts(cnames=cnames, oids=oids)
 
-        yield self.register(get_object, 'vger.get_mod_dts')
+        yield self.register(get_mod_dts, 'vger.get_mod_dts')
 
         def get_user_roles(userid, data=None, version=None, cb_details=None):
             """

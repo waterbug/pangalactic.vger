@@ -139,8 +139,11 @@ def search_ldap_directory(ldap_url, base_dn, test=None, **kw):
     orb.log.info('  ldap_schema = {}'.format(str(schema)))
     ldap_req_fields = config.get('ldap_req_fields', '')
     orb.log.info('  ldap_req_fields = {}'.format(ldap_req_fields))
+    # NOTE: f must be initialized here -- if no schema is configured, the
+    # "else" branch below does not set it (which used to raise
+    # UnboundLocalError when the search string was assembled)
+    f = ''
     if schema:
-        f = ''
         valid_fields = {schema[a]:a for a in schema}
         if kw and valid_fields:
             valid_values = [(valid_fields.get(a), kw[a])
