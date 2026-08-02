@@ -383,12 +383,26 @@ home = 'vger_test'                       # your home directory
 key_path = os.path.join(home, 'vger.key')
 
 privkey = PrivateKey.generate()
-with open(key_path, 'wb') as f:
+# create it already-restricted rather than chmod-ing afterwards: otherwise
+# the private key sits at the process umask (measured: 0o664, i.e.
+# world-readable) until the chmod lands, and stays there if the write raises.
+# O_EXCL also refuses to overwrite an existing key.
+fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, 'wb') as f:
     f.write(privkey.encode())
-os.chmod(key_path, 0o600)                # private key: keep it unreadable
 
 print(cryptosign.CryptosignKey.from_file(key_path).public_key())
 ```
+
+*Updated 2026-08-02 to match the hardened `gen_keys()` — see
+`pangalactic.node/pangalaxian_handlers_review.md` #6, the consolidated record
+for that function. The previous version of this snippet had the same
+create-then-chmod exposure the client had.*
+
+Note the printed public key has **no trailing newline**, and must not acquire
+one on its way into `principals.db`: the authenticator matches it against the
+bare hex key from the WAMP handshake, so a stray newline prevents login
+silently. Same trap as `admin_tool_review.md` #4.
 
 Print that public key — the next step needs it.
 
