@@ -1149,7 +1149,18 @@ class RepositoryService(ApplicationSession):
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                tuple of lists:  (oids_not_found, oids_deleted)
+                dict:  {'not_found': [oids],   # no such object here
+                        'deleted':   [oids],   # deleted
+                        'unauth':    [oids]}   # found, but refused
+
+            NOTE: this used to return the tuple (oids_not_found, oids_deleted),
+            which had no way to say "refused".  A caller could not distinguish
+            a deletion the repository *rejected* from one lost to a dropped
+            connection -- both simply appeared in neither list.  That matters
+            for the offline deletion queue, which must retry the second and
+            report the first;  see NOTES_ON_OFFLINE_AND_SYNC.md section 3.2.
+            The client accepts either shape, so the two ends can be upgraded
+            independently.
             """
             orb.log.info('* vger.delete({})'.format(str(oids)))
             # TODO:  check that user has permission to delete
@@ -1166,6 +1177,12 @@ class RepositoryService(ApplicationSession):
             # attribute only be deleted by a Global Admin -> only instances of
             # subclasses of 'Modelable' can be deleted by ordinary users.
             admin_role = orb.get('pgefobjects:Role.Administrator')
+            # SANDBOX PSUs are deleted inline below without being published.
+            # NOTE: they are tracked here so they can still be *reported* as
+            # deleted -- previously they appeared in neither returned list, so
+            # a caller could not tell they had been actioned.  The offline
+            # deletion queue would have retried them at every sync forever.
+            sandbox_deleted = []
             if is_global_admin(user):
                 orb.log.info('  caller is a global admin')
                 auth_dels = objs_found
@@ -1186,6 +1203,7 @@ class RepositoryService(ApplicationSession):
                     elif (hasattr(obj, 'project') and
                           getattr(obj.project, 'id', '') == 'SANDBOX'):
                         # if SANDBOX PSU, delete but don't publish
+                        sandbox_deleted.append(obj.oid)
                         orb.delete([obj])
                     elif getattr(obj, 'creator', None) is user:
                         auth_dels[obj.oid] = obj
@@ -1205,8 +1223,20 @@ class RepositoryService(ApplicationSession):
                 orb.log.info('   publishing "deleted" msg to public channel.')
                 channel = 'vger.channel.public'
                 self.publish(channel, {'deleted': oid})
+            # objects that exist here but the caller may not delete.  Reported
+            # explicitly so the caller can tell a refusal from a lost rpc.
+            oids_unauth = [oid for oid in objs_found
+                           if oid not in auth_dels
+                           and oid not in sandbox_deleted]
+            # SANDBOX PSUs were deleted above (silently, by design) -- report
+            # them as deleted even though nothing was published
+            oids_deleted = oids_deleted + sandbox_deleted
             orb.log.info(f'  deleted: {oids_deleted}')
-            return (oids_not_found, oids_deleted)
+            if oids_unauth:
+                orb.log.info(f'  refused (not authorized): {oids_unauth}')
+            return {'not_found': oids_not_found,
+                    'deleted': oids_deleted,
+                    'unauth': oids_unauth}
 
         yield self.register(delete, 'vger.delete',
                             RegisterOptions(details_arg='cb_details'))
