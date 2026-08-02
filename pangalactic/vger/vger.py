@@ -2216,6 +2216,18 @@ class RepositoryService(ApplicationSession):
             try:
                 recompute_parmz()
                 parmz_dts = str(dtstamp())
+                # NOTE: state['parmz_dts'] and state['dez_dts'] are written
+                # here and at the other cache-mutating rpcs, and deliberately
+                # never read -- they are a diagnostic record of when the
+                # caches last changed.  Do NOT "finish" them into a
+                # conditional fetch on the model of mode_defz_dts: the client
+                # cache is the server's copy plus local drift, and the
+                # server's stamp says nothing about that drift, so skipping a
+                # pull would let it persist.  Full reasoning (and why the
+                # cheap version of the idea buys nothing) is in
+                # p.core/NOTES_FOR_DEVELOPERS.md, after the state key list.
+                # The *value* is not dead: it is this rpc's return value, and
+                # doubles as its success indicator.
                 state['parmz_dts'] = parmz_dts
                 # publish on public channel
                 channel = 'vger.channel.public'
@@ -2425,7 +2437,8 @@ class RepositoryService(ApplicationSession):
             # For now, just publish on public channel
             add_data_element(oid, deid)
             # NOTE: add_de()/del_de() previously left "dez_dts" untouched,
-            # unlike their parameter counterparts and set_data_elements()
+            # unlike their parameter counterparts and set_data_elements().
+            # Diagnostic only -- see the note in set_parameters() above.
             state['dez_dts'] = str(dtstamp())
             channel = 'vger.channel.public'
             orb.log.info(f'  + publishing "de added" on "{channel}" ...')
