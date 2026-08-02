@@ -2232,6 +2232,47 @@ class RepositoryService(ApplicationSession):
         yield self.register(set_parameters, 'vger.set_parameters',
                             RegisterOptions(details_arg='cb_details'))
 
+        def check_parm_auth(oid, cb_details):
+            """
+            Authorize a single-item parameter / data element mutation.
+
+            add_parm(), del_parm(), add_de() and del_de() all previously
+            mutated the caches and published the result without looking at the
+            caller at all -- any user could add or remove any parameter or
+            data element on any object, and the call always reported success.
+            Their batch equivalents set_parameters() and set_data_elements()
+            have always checked "modify" perms; these four had simply been
+            missed.
+
+            Routing them through get_perms() also brings them under the
+            check-out model:  since phase 2, get_perms() consults
+            is_writable_now(), so a claim held by another user blocks these
+            mutations exactly as it blocks an attribute edit.  Parameters are
+            the bulk of engineering content, so a claim that did not cover
+            them would not be worth much.
+
+            Args:
+                oid (str):  oid of the object being modified
+                cb_details:  the crossbar call details
+
+            Returns:
+                None if the caller is authorized, else the failure message the
+                rpc should return (always prefixed "failure:", the convention
+                the batch setters already use and the client tests for)
+            """
+            userid = getattr(cb_details, 'caller_authid', 'unknown')
+            if not oid:
+                return 'failure: no oid specified'
+            obj = orb.get(oid)
+            if not obj:
+                orb.log.debug(f'  obj with oid "{oid}" not found')
+                return 'failure: object not found'
+            user_obj = orb.select('Person', id=userid)
+            if 'modify' not in get_perms(obj, user=user_obj):
+                orb.log.debug(f'  "{userid}" not auth to modify "{oid}"')
+                return 'failure: not authorized'
+            return None
+
         def add_parm(oid=None, pid=None, cb_details=None):
             """
             Add a parameter to an object.
@@ -2242,10 +2283,14 @@ class RepositoryService(ApplicationSession):
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                result (str):  message about the result
+                result (str):  message about the result; a string beginning
+                    with "failure:" if the caller was not authorized
             """
             argstr = f'oid={oid}, pid={pid}'
             orb.log.info(f'* [rpc] add_parm({argstr})')
+            failure = check_parm_auth(oid, cb_details)
+            if failure:
+                return failure
             add_parameter(oid, pid)
             state['parmz_dts'] = str(dtstamp())
             # For now, just publish on public channel
@@ -2268,10 +2313,14 @@ class RepositoryService(ApplicationSession):
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                result (str):  message about the result
+                result (str):  message about the result; a string beginning
+                    with "failure:" if the caller was not authorized
             """
             argstr = f'oid={oid}, pid={pid}'
             orb.log.info(f'* [rpc] del_parm({argstr})')
+            failure = check_parm_auth(oid, cb_details)
+            if failure:
+                return failure
             # For now, just publish on public channel
             delete_parameter(oid, pid)
             state['parmz_dts'] = str(dtstamp())
@@ -2365,12 +2414,19 @@ class RepositoryService(ApplicationSession):
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                result (str):  message about the result
+                result (str):  message about the result; a string beginning
+                    with "failure:" if the caller was not authorized
             """
             argstr = f'oid={oid}, deid={deid}'
             orb.log.info(f'* [rpc] add_de({argstr})')
+            failure = check_parm_auth(oid, cb_details)
+            if failure:
+                return failure
             # For now, just publish on public channel
             add_data_element(oid, deid)
+            # NOTE: add_de()/del_de() previously left "dez_dts" untouched,
+            # unlike their parameter counterparts and set_data_elements()
+            state['dez_dts'] = str(dtstamp())
             channel = 'vger.channel.public'
             orb.log.info(f'  + publishing "de added" on "{channel}" ...')
             self.publish(channel,
@@ -2390,12 +2446,17 @@ class RepositoryService(ApplicationSession):
                 cb_details:  added by crossbar; not included in rpc signature
 
             Returns:
-                result (str):  message about the result
+                result (str):  message about the result; a string beginning
+                    with "failure:" if the caller was not authorized
             """
             argstr = f'oid={oid}, deid={deid}'
             orb.log.info(f'* [rpc] del_de({argstr})')
+            failure = check_parm_auth(oid, cb_details)
+            if failure:
+                return failure
             # For now, just publish on public channel
             delete_data_element(oid, deid)
+            state['dez_dts'] = str(dtstamp())
             channel = 'vger.channel.public'
             orb.log.info(f'  + publishing "de del" on "{channel}" ...')
             self.publish(channel,
