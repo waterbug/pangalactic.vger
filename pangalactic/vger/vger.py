@@ -3116,11 +3116,25 @@ class RepositoryService(ApplicationSession):
                 oids (iterable of str):  iterable of object oids
 
             Returns:
-                dict:  parameterz data.
+                dict:  parameterz data.  Oids with no entry in the cache are
+                    omitted rather than mapped to None -- see the note below.
+
+            NOTE: no access filtering is done here, deliberately; see
+            "Read access is NOT applied to the parameter caches" in
+            p.core/NOTES_FOR_DEVELOPERS.md.
             """
             orb.log.info(f'* [rpc] vger.get_parmz(oids={oids})')
             if oids:
-                return {oid: parameterz.get(oid) for oid in oids}
+                # NOTE: this used to be "parameterz.get(oid)", which mapped an
+                # oid the server has no parameters for to None.  The client
+                # applies this result with parameterz.update(), so those None
+                # values were written straight into the client's cache, where
+                # anything iterating parameterz[oid] would hit them.  Omitting
+                # the key instead leaves the client's own entry untouched,
+                # which is the correct meaning of "the server has nothing to
+                # say about this oid".
+                return {oid: parameterz[oid] for oid in oids
+                        if oid in parameterz}
             else:
                 return parameterz
 
