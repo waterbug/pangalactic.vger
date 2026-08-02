@@ -1350,6 +1350,90 @@ class RepositoryService(ApplicationSession):
                     return co
             return None
 
+        def refresh_checkouts_state():
+            """
+            Rebuild state['checkouts'] from the active CheckOut records.
+
+            This is what makes claims *enforceable* server-side:
+            access.is_writable_now() reads state['checkouts'], in the same
+            shape the client maintains, so that get_perms() has one code path
+            on both sides.  Without this the server's mirror would be empty
+            and every claim would be invisible to vger.save().
+
+            Called at startup and after every claim mutation, and again by
+            get_checkouts() -- which clients call at sync -- so the mirror is
+            refreshed regularly.
+
+            NOTE on expiry:  lapsed claims are filtered out here, but a claim
+            that lapses between rebuilds lingers in the mirror until the next
+            one.  That errs on the side of *withholding* write access rather
+            than granting it, and is corrected at the next rebuild.  A
+            background sweep that deletes lapsed CheckOut instances and
+            publishes their release would tighten this;  get_active_checkout()
+            is deliberately the single place that decides "is this claim
+            still active?", so adding one will not change semantics.
+
+            Returns:
+                dict:  the rebuilt mirror, {oid: {userid, expiry_datetime,
+                    purpose}}
+            """
+            now = dtstamp()
+            checkouts = {}
+            for co in (orb.get_by_type('CheckOut') or []):
+                item = getattr(co, 'checked_out_item', None)
+                oid = getattr(item, 'oid', '')
+                if not oid:
+                    continue
+                expiry = getattr(co, 'expiry_datetime', None)
+                if expiry is not None and earlier(expiry, now):
+                    # lapsed -- not an active claim
+                    continue
+                checkouts[oid] = {
+                    'userid': getattr(co.checked_out_by, 'id', ''),
+                    'expiry_datetime': str(expiry or ''),
+                    'purpose': co.description or ''}
+            state['checkouts'] = checkouts
+            return checkouts
+
+        def expand_checkout_oids(oids):
+            """
+            Expand a list of requested oids to the full set a claim covers.
+
+            A claim on an object extends to its *directly* related objects
+            (orb.get_checkout_set()) -- for a Product that means its Acus,
+            Ports, Activities and Models, since those are what one actually
+            edits while working on it.  Checking out an assembly and then
+            being unable to change its Acus would be useless, and -- the other
+            half of the same point -- claiming the assembly while leaving its
+            Acus editable by everyone else would not be a claim at all.
+
+            Applied by check_out, check_in and release alike, so that the set
+            released is the same set that was claimed.
+
+            NOTE: an unknown oid is passed through unchanged rather than
+            dropped, so the caller still gets a per-oid reason for it.
+
+            Args:
+                oids (list of str):  the requested oids
+
+            Returns:
+                list of str:  the expanded oids, requested ones first, no
+                    duplicates
+            """
+            expanded, seen = [], set()
+            for oid in (oids or []):
+                obj = orb.get(oid)
+                if obj is None:
+                    if oid not in seen:
+                        seen.add(oid)
+                        expanded.append(oid)
+                    continue
+                for item in orb.get_checkout_set(obj):
+                    if item.oid not in seen:
+                        seen.add(item.oid)
+                        expanded.append(item.oid)
+            return expanded
+
         def serialize_checkout(co):
             """
             Compact wire form of a CheckOut, for display by clients.
@@ -1399,7 +1483,11 @@ class RepositoryService(ApplicationSession):
                 n_days = int(DEFAULT_CHECKOUT_DAYS)
             expiry = dts + timedelta(days=n_days)
             new_cos = []
-            for oid in (oids or []):
+            # a claim covers the requested objects *and* their directly
+            # related objects -- see expand_checkout_oids()
+            oids = expand_checkout_oids(oids)
+            orb.log.info(f'  claiming {len(oids)} object(s) after expansion.')
+            for oid in oids:
                 obj = orb.get(oid)
                 if obj is None:
                     denied[oid] = 'unknown_oid'
@@ -1437,6 +1525,7 @@ class RepositoryService(ApplicationSession):
             if new_cos:
                 orb.save(new_cos)
                 orb.log.info(f'  {len(new_cos)} claim(s) recorded.')
+                refresh_checkouts_state()
                 self.publish('vger.channel.public',
                              {'checked out': [serialize_checkout(co)
                                               for co in new_cos]})
@@ -1474,7 +1563,9 @@ class RepositoryService(ApplicationSession):
             user = orb.select('Person', id=userid)
             checked_in, not_held = [], []
             to_delete = []
-            for oid in (oids or []):
+            # release the same set that was claimed -- see
+            # expand_checkout_oids()
+            for oid in expand_checkout_oids(oids):
                 obj = orb.get(oid)
                 co = get_active_checkout(obj) if obj is not None else None
                 if co is None or getattr(co.checked_out_by, 'id', '') != userid:
@@ -1486,6 +1577,7 @@ class RepositoryService(ApplicationSession):
                 # release is represented by deletion of the CheckOut instance
                 orb.delete(to_delete)
                 orb.log.info(f'  {len(checked_in)} claim(s) released.')
+                refresh_checkouts_state()
                 self.publish('vger.channel.public',
                              {'checked in': checked_in})
             if not_held:
@@ -1520,7 +1612,9 @@ class RepositoryService(ApplicationSession):
             ga = is_global_admin(user)
             released, unauth, not_held = [], [], []
             to_delete = []
-            for oid in (oids or []):
+            # release the same set that was claimed -- see
+            # expand_checkout_oids()
+            for oid in expand_checkout_oids(oids):
                 obj = orb.get(oid)
                 co = get_active_checkout(obj) if obj is not None else None
                 if co is None:
@@ -1535,6 +1629,7 @@ class RepositoryService(ApplicationSession):
             if to_delete:
                 orb.delete(to_delete)
                 orb.log.info(f'  {len(released)} claim(s) force-released.')
+                refresh_checkouts_state()
                 self.publish('vger.channel.public', {'checked in': released})
             if unauth:
                 orb.log.info(f'  {len(unauth)} not authorized for "{userid}".')
@@ -1559,6 +1654,9 @@ class RepositoryService(ApplicationSession):
                     checkout and expiry datetimes, and purpose.
             """
             orb.log.info('* [rpc] vger.get_checkouts() ...')
+            # clients call this at sync, so it is also a convenient moment to
+            # re-sweep lapsed claims out of the server's own mirror
+            refresh_checkouts_state()
             now = dtstamp()
             result = []
             for co in orb.get_by_type('CheckOut'):
@@ -1575,6 +1673,13 @@ class RepositoryService(ApplicationSession):
 
         yield self.register(get_checkouts, 'vger.get_checkouts',
                             RegisterOptions(details_arg='cb_details'))
+
+        # prime the mirror from the db, so that claims made before this
+        # process started are enforced from the first rpc onwards rather than
+        # only after the first claim mutation
+        refresh_checkouts_state()
+        n_active = len(state.get('checkouts') or {})
+        orb.log.info(f'* {n_active} active check-out claim(s) at startup.')
 
         def sync_objects(data, cb_details=None):
             """
