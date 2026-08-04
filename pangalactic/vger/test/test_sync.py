@@ -101,3 +101,100 @@ class SyncProjectCallerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SyncProjectClassificationTests(unittest.TestCase):
+    """
+    Tests of how sync_project() classifies the oids the client sends.
+
+    The three buckets it returns -- "same", "newer" (as serialized objects)
+    and "older" -- were not exhaustive over what a client can hold.  "same"
+    and "newer" are both derived from `server_objs`, and "older" used to be
+    everything the client sent *minus* those two, so any oid the server did
+    not enumerate fell through to "older" -- which the client reads as "your
+    copy is newer, push it".
+
+    A non-admin's own RoleAssignment is exactly such an oid: it reaches the
+    client from get_user_roles(), but RoleAssignments are not owned by the
+    project, so get_objects_for_project() does not return them, and the
+    "project_ras" list is empty unless the caller is a project admin or a
+    global admin.  So every sync told the client to push an object identical
+    to the server's, which it then withheld for lack of "modify" permission.
+
+    Reported from live multi-client testing, 2026-08-04.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.orb = start_test_orb()
+        cls.rpcs, cls.session = register_rpcs()
+        cls.user = get_test_user('zaphod')
+        # NOTE: the rpc is deliberately NOT stored as a class attribute --
+        # that makes it a bound method, so "self" arrives as its first
+        # positional argument and collides with cb_details.  See the note in
+        # test/README.md.
+
+    def setUp(self):
+        from pangalactic.core import orb
+        self.ra = None
+        self.project = None
+        for r in orb.search_exact(cname='RoleAssignment',
+                                  assigned_to=self.user):
+            ctx = r.role_assignment_context
+            if ctx is not None and ctx.__class__.__name__ == 'Project':
+                self.ra, self.project = r, ctx
+                break
+        if self.ra is None:
+            self.skipTest('test data has no project-scoped RoleAssignment '
+                          'for this user')
+
+    def test_08_own_role_assignment_is_not_classified_as_older(self):
+        """CASE: a non-admin's own RoleAssignment, identical to the server's,
+        is not returned as something to push"""
+        data = {self.ra.oid: str(self.ra.mod_datetime)}
+        sync_project = self.rpcs['vger.sync_project']
+        result = sync_project(self.project.oid, data,
+                              cb_details=FakeDetails('zaphod'))
+        older_oids = result[2]
+        self.assertNotIn(self.ra.oid, older_oids,
+                         'server told the client to push an identical object')
+
+    def test_09_unenumerated_oid_is_in_no_bucket_at_all(self):
+        """CASE: an oid the server did not enumerate is simply not mentioned
+
+        Neither pushed nor pulled.  "unknown_oids" is for oids the server has
+        no object for at all, which is not this case -- the RoleAssignment
+        exists, it is just not part of what this caller syncs by project.
+        """
+        data = {self.ra.oid: str(self.ra.mod_datetime)}
+        sync_project = self.rpcs['vger.sync_project']
+        result = sync_project(self.project.oid, data,
+                              cb_details=FakeDetails('zaphod'))
+        newer_sobjs, same_oids, older_oids, unknown_oids = result[:4]
+        newer_oids = [so.get('oid') for so in newer_sobjs]
+        for bucket, name in ((same_oids, 'same'), (older_oids, 'older'),
+                             (unknown_oids, 'unknown'), (newer_oids, 'newer')):
+            self.assertNotIn(self.ra.oid, bucket,
+                             f'RoleAssignment turned up in "{name}"')
+
+    def test_10_a_genuinely_older_server_copy_is_still_reported(self):
+        """CASE: the positive formulation still finds real work to do
+
+        Guards against "fixing" the false positive by never reporting
+        anything: a project object whose server copy really is older than the
+        client's must still come back in "older_oids".
+        """
+        from pangalactic.core import orb
+        objs = [o for o in orb.get_objects_for_project(self.project)
+                if getattr(o, 'mod_datetime', None)]
+        if not objs:
+            self.skipTest('no project objects with a mod_datetime')
+        obj = objs[0]
+        # client claims a copy modified a day later than the server's
+        later = obj.mod_datetime.replace(year=obj.mod_datetime.year + 1)
+        data = {obj.oid: str(later)}
+        sync_project = self.rpcs['vger.sync_project']
+        result = sync_project(self.project.oid, data,
+                              cb_details=FakeDetails('zaphod'))
+        self.assertIn(obj.oid, result[2],
+                      'a genuinely newer client copy was not requested')

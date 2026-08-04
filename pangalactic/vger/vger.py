@@ -2126,8 +2126,29 @@ class RepositoryService(ApplicationSession):
                             newer_objs.append(o)
                     same_oids = [o.oid for o in server_objs
                                  if o.mod_datetime == dts_by_oid.get(o.oid)]
-                    older_oids = list(set(dts_by_oid.keys()) - set(same_oids)
-                                      - set([o.oid for o in newer_objs]))
+                    # NOTE: this used to be computed by subtraction --
+                    # everything the client sent, minus "same", minus "newer".
+                    # Since both of those are derived from "server_objs", any
+                    # oid the client holds that the server did not *enumerate*
+                    # fell through to "older", i.e. "your copy is newer, push
+                    # it".  A non-admin's own RoleAssignment is exactly such an
+                    # oid:  it reaches the client from get_user_roles(), but
+                    # RoleAssignments are not owned by the project, so
+                    # get_objects_for_project() does not return them, and
+                    # "project_ras" above is empty unless the caller is a
+                    # project admin or a global admin.  The client was
+                    # therefore told, on every sync forever, to push an object
+                    # identical to the server's -- which it then withheld,
+                    # having no "modify" permission on it.
+                    #
+                    # Computed positively now: only oids the server actually
+                    # compared, and whose server copy really is earlier.  An
+                    # oid the server did not enumerate is simply not mentioned,
+                    # so the client neither pushes nor pulls it.
+                    older_oids = [o.oid for o in server_objs
+                                  if o.oid in dts_by_oid
+                                  and earlier(o.mod_datetime,
+                                              dts_by_oid[o.oid])]
                 else:
                     newer_objs = server_objs
                 deleted_oids = list(deleted)

@@ -482,6 +482,75 @@ and it contradicts the established invariant that an oid is non-semantic and
 never caller-derivable — see the `clone()` discussion in
 `pangalactic.core/pangalactic_core_review_scoped.md`.)*
 
+## Found by live multi-client testing (2026-08-04)
+
+### C. `sync_project` told every non-admin to push their own RoleAssignment, forever
+
+Reported by the author from a two-machine session: on every sync, the
+non-admin client (zaphod) popped up *"The repository could not accept
+everything from this session: withheld (1): zaphod_se"*. Inspecting the
+object on both clients showed them **identical** — same oid, same
+creator/modifier, same `mod_datetime` to the microsecond. Nothing had been
+modified, so nothing should have been pushed.
+
+The classification was wrong, not the data. `sync_project` returned three
+buckets, and the third was computed by subtraction:
+
+```python
+    same_oids = [o.oid for o in server_objs
+                 if o.mod_datetime == dts_by_oid.get(o.oid)]
+    older_oids = list(set(dts_by_oid.keys()) - set(same_oids)
+                      - set([o.oid for o in newer_objs]))
+```
+
+`same_oids` and `newer_objs` are both derived from `server_objs`, so **any
+oid the client holds that the server did not enumerate fell through to
+`older_oids`** — which the client reads as "your copy is newer, push it".
+
+A non-admin's own RoleAssignment is exactly such an oid. It reaches the
+client from `get_user_roles()` at login, but RoleAssignments are not *owned*
+by the project, so `get_objects_for_project()` does not return them, and the
+`project_ras` list a few lines above is empty unless the caller is a project
+admin or a global admin. (`unknown_oids` does not catch it either: that is
+`set(data) - set(orb.get_oids())`, and the object does exist on the server.)
+
+So the client added it to `objs_to_save`, and the 2024-02-29 filter in
+`pangalaxian.on_sync_result` withheld it, the user having no `modify`
+permission on a RoleAssignment. **That filter is unchanged and pre-dates
+this**; what is new is that the withheld list is now reported to the user
+rather than dropped silently, which is what surfaced a defect that had been
+running on every sync of every non-admin session.
+
+**Reproduced by execution** before changing anything, against the test
+fixtures — same object and oid as the live report:
+
+    older_oids : ['test:RA.zaphod_se']
+
+**FIXED (2026-08-04).** `older_oids` is computed positively, from objects the
+server actually compared:
+
+```python
+    older_oids = [o.oid for o in server_objs
+                  if o.oid in dts_by_oid
+                  and earlier(o.mod_datetime, dts_by_oid[o.oid])]
+```
+
+An oid the server did not enumerate is now simply not mentioned — the client
+neither pushes nor pulls it, which is right, since RoleAssignments reach the
+client by `get_user_roles()` rather than by project sync.
+
+*Behavioural narrowing, stated deliberately:* if an object legitimately
+belongs to a project but `get_objects_for_project()` fails to return it, the
+old code would still have pushed a client-side modification of it and the new
+code will not. That trade was accepted by the author — inventing a "push me"
+instruction for objects the server cannot see is the worse failure — but it
+is the reason the third test below exists.
+
+Tests: `test_sync.py` cases 08-10. The first two fail against the pre-fix
+code; the third passes both ways by design, guarding against "fixing" the
+false positive by never reporting anything — a project object whose server
+copy really is older must still come back in `older_oids`.
+
 ## Missed by this review — found by the test suite
 
 - **`get_object` was registered under the name `vger.get_mod_dts`**
