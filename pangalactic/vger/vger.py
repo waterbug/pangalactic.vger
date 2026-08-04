@@ -2658,10 +2658,37 @@ class RepositoryService(ApplicationSession):
             # orb.log.info('============================================')
             # ============================================================
             # discipline engineers must be allowed to add subsystems to
-            # mode_defz if they are defining modes at component level; hence
-            # all users with access to the project are authorized ...
-            # (restrictions can be added but would be very complex to
-            # implement ...)
+            # mode_defz if they are defining modes at component level, so
+            # *any* role in the project authorizes this -- not just an admin
+            # role.  Finer-grained restrictions were considered and rejected
+            # as very complex to implement for little gain.
+            #
+            # NOTE [2026-08-04]: this check is new.  The comment here used to
+            # say "all users with access to the project are authorized", but
+            # nothing tested for project access: "userid" was read and then
+            # used only in the publish payload, so *any* authenticated user
+            # could replace *any* project's mode definitions wholesale.  The
+            # client was already written for the refusal -- it tests the
+            # result against 'unauthorized' -- so only the server half was
+            # missing.  See NOTES_ON_CHECKOUT_MODEL.md section 9, decision 4.
+            # ============================================================
+            user = orb.select('Person', id=userid)
+            if not user:
+                orb.log.info('        no such user -- not authorized.')
+                return 'unauthorized'
+            ras = orb.search_exact(cname='RoleAssignment', assigned_to=user,
+                                   role_assignment_context=project)
+            if not ras and not is_global_admin(user):
+                orb.log.info(f'        "{userid}" has no role on {pname} '
+                             'and is not a global admin -- not authorized.')
+                return 'unauthorized'
+            # ============================================================
+            # NOTE: the update remains a wholesale replacement, and the
+            # server does not compare the incoming data against its own
+            # mode_defz_dts -- so concurrent editors are last-write-wins.
+            # Accepted deliberately (author, 2026-08-04, section 9 decision
+            # 4): mode editing is a specialised, low-concurrency activity,
+            # and object check-out cannot cover project-scoped shared state.
             # ============================================================
             if project_oid in mode_defz:
                 del mode_defz[project_oid]

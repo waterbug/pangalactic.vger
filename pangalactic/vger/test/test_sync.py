@@ -14,6 +14,9 @@ import unittest
 # set the orb (see the note in test_save.py)
 import pangalactic.core.set_uberorb
 
+from pangalactic.core.access import is_global_admin
+from pangalactic.core.parametrics import mode_defz
+
 from pangalactic.vger.test.fixtures import (start_test_orb, get_test_user,
                                             all_of_class, FakeDetails)
 from pangalactic.vger.test.test_vger import register_rpcs
@@ -198,3 +201,70 @@ class SyncProjectClassificationTests(unittest.TestCase):
                               cb_details=FakeDetails('zaphod'))
         self.assertIn(obj.oid, result[2],
                       'a genuinely newer client copy was not requested')
+
+
+class UpdateModeDefsAuthTests(unittest.TestCase):
+    """
+    Tests that vger.update_mode_defs() authorizes its caller.
+
+    It replaces a project's mode definitions wholesale, and used to do so for
+    *any* authenticated caller: "userid" was read and then used only in the
+    published message, so nothing tested for access to the project.  The
+    comment in the handler asserted that "all users with access to the project
+    are authorized", which described an intent rather than the code.
+
+    The client was already written for the refusal -- it tests the result
+    against 'unauthorized' -- so only the server half was missing.
+
+    Any role in the project authorizes, deliberately: discipline engineers add
+    subsystems to mode_defz when defining modes at component level.  See
+    NOTES_ON_CHECKOUT_MODEL.md section 9, decision 4.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.orb = start_test_orb()
+        cls.rpcs, cls.session = register_rpcs()
+
+    def setUp(self):
+        from pangalactic.core import orb
+        self.project = orb.get('H2G2')
+        if self.project is None:
+            self.skipTest('test data has no H2G2 project')
+        self.data = {'modes': {'1': 'Nominal'}}
+
+    def _call(self, userid):
+        update_mode_defs = self.rpcs['vger.update_mode_defs']
+        return update_mode_defs(project_oid=self.project.oid, data=self.data,
+                                cb_details=FakeDetails(userid))
+
+    def test_11_user_with_a_project_role_is_authorized(self):
+        """CASE: zaphod holds Systems Engineer on H2G2"""
+        result = self._call('zaphod')
+        self.assertNotEqual('unauthorized', result)
+
+    def test_12_user_with_no_role_on_the_project_is_refused(self):
+        """CASE: a real user holding no role on this project"""
+        from pangalactic.core import orb
+        outsider = None
+        for p in orb.get_by_type('Person'):
+            if p.id in ('admin',):
+                continue
+            ras = orb.search_exact(cname='RoleAssignment', assigned_to=p,
+                                   role_assignment_context=self.project)
+            if not ras and not is_global_admin(p):
+                outsider = p
+                break
+        if outsider is None:
+            self.skipTest('test data has no user without a role on H2G2')
+        before = dict(mode_defz)
+        result = self._call(outsider.id)
+        self.assertEqual('unauthorized', result)
+        self.assertEqual(before.get(self.project.oid),
+                         mode_defz.get(self.project.oid),
+                         'mode_defz was modified despite the refusal')
+
+    def test_13_unknown_user_is_refused(self):
+        """CASE: an authid with no Person record"""
+        result = self._call('no-such-user-at-all')
+        self.assertEqual('unauthorized', result)
