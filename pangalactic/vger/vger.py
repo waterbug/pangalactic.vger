@@ -73,8 +73,9 @@ from pangalactic.core                  import (config, deleted, state,
                                                read_config, write_config,
                                                read_deleted, write_deleted,
                                                write_state)
-from pangalactic.core.access           import (get_perms, is_cloaked,
-                                               is_global_admin, modifiables)
+from pangalactic.core.access           import (get_owner_id, get_perms,
+                                               is_cloaked, is_global_admin,
+                                               modifiables)
 from pangalactic.core.clone            import clone
 from pangalactic.core.mapping          import schema_maps
 from pangalactic.core.meta             import intconv, SELECTABLE_VALUES
@@ -1013,20 +1014,13 @@ class RepositoryService(ApplicationSession):
                     # orb.log.info('   cloaked: only owner org has access:')
                     # if cloaked, publish 'modified' message only on owner
                     # channel
-                    owner_id = ''
-                    if hasattr(mod_obj, 'owner'):
-                        owner_id = getattr(mod_obj.owner, 'id', None)
-                    elif isinstance(mod_obj,
-                                    orb.classes['ProjectSystemUsage']):
-                        owner = getattr(mod_obj.system, 'owner', None)
-                        if owner:
-                            owner_id = getattr(mod_obj.system.owner, 'id',
-                                               None)
-                    elif isinstance(mod_obj, orb.classes['Acu']):
-                        owner = getattr(mod_obj.assembly, 'owner', None)
-                        if owner:
-                            owner_id = getattr(mod_obj.assembly.owner, 'id',
-                                               None)
+                    # NOTE: get_owner_id() replaces the owner / PSU / Acu
+                    # chain that used to be inlined here and in the "new
+                    # object" case below.  It follows the same delegation
+                    # is_cloaked() does, so a subsidiary object (e.g. a
+                    # component placement) resolves to the project that owns
+                    # the assembly it belongs to.
+                    owner_id = get_owner_id(mod_obj)
                     if owner_id:
                         if owner_id in mod_objs:
                             # 2.2.dev8: add serialized object, not id
@@ -1063,20 +1057,7 @@ class RepositoryService(ApplicationSession):
                 if is_cloaked(new_obj):
                     orb.log.debug(f'   + new object oid: {new_obj.oid}')
                     orb.log.debug('     new object is cloaked -- ')
-                    owner_id = ''
-                    if isinstance(new_obj, orb.classes['ManagedObject']):
-                        owner_id = getattr(new_obj.owner, 'id', None)
-                    elif isinstance(new_obj,
-                                    orb.classes['ProjectSystemUsage']):
-                        owner = getattr(new_obj.system, 'owner', None)
-                        if owner:
-                            owner_id = getattr(new_obj.system.owner, 'id',
-                                               None)
-                    elif isinstance(new_obj, orb.classes['Acu']):
-                        owner = getattr(new_obj.assembly, 'owner', None)
-                        if owner:
-                            owner_id = getattr(new_obj.assembly.owner, 'id',
-                                               None)
+                    owner_id = get_owner_id(new_obj)
                     if owner_id:
                         # msg = '   + publishing "new" only to owner org: "{}"'
                         # orb.log.info(msg.format(owner_id))
