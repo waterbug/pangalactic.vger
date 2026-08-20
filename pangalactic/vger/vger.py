@@ -632,9 +632,15 @@ class RepositoryService(ApplicationSession):
             # RepresentationFile
             rep_file_id = m_id + '_file'
             rep_file_name = m_name + ' file'
+            # NOTE: mime_type was never set here.  It is a DigitalFile
+            # attribute and nothing populated it, so every RepresentationFile
+            # in the repository had a null one.  Callers that know the type
+            # of the file they are sending now pass it in "parms"; those that
+            # do not are unaffected.
             rep_file = clone('RepresentationFile', of_object=model,
                              id=rep_file_id, name=rep_file_name,
                              user_file_name=fname, file_size=fsize,
+                             mime_type=parms.get('mime_type', '') or '',
                              create_datetime=dts, mod_datetime=dts)
             vault_fname = orb.get_vault_fname(rep_file)
             rep_file.url = os.path.join('vault://', vault_fname)

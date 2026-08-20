@@ -283,6 +283,54 @@ class SimpleRpcTests(unittest.TestCase):
                                         oids=['oid-0'])
         self.assertEqual(mod_dts, res)
 
+    def test_03a_add_update_model_sets_mime_type(self):
+        """
+        CASE: add_update_model() puts the caller's mime_type on the
+        RepresentationFile it creates.
+
+        NOTE: mime_type was never set here, so every RepresentationFile in
+        the repository had a null one.  The STEP importer needs it, and any
+        caller that knows the type of file it is sending should be able to
+        record it.
+        """
+        add_update_model = self.rpcs['vger.add_update_model']
+        parms = {'file name': 'rover.stp', 'file size': '1234',
+                 'mime_type': 'application/step', 'name': 'Rover',
+                 'of_thing_oid': 'thing-0', 'owner_oid': 'org-0'}
+        with mock.patch.object(vger, 'orb') as fake_orb, \
+                mock.patch.object(vger, 'clone') as fake_clone, \
+                mock.patch.object(vger, 'serialize') as fake_serialize:
+            fake_serialize.return_value = []
+            fake_orb.get_vault_fname.return_value = 'vault-name'
+            add_update_model(mtype_oid='mt-0', fpath='/tmp/rover.stp',
+                             parms=parms, cb_details=None)
+        rep_file_calls = [c for c in fake_clone.call_args_list
+                          if c.args and c.args[0] == 'RepresentationFile']
+        self.assertEqual(1, len(rep_file_calls))
+        kw = rep_file_calls[0].kwargs
+        self.assertEqual('application/step', kw.get('mime_type'))
+        self.assertEqual('rover.stp', kw.get('user_file_name'))
+
+    def test_03b_add_update_model_without_mime_type(self):
+        """
+        CASE: a caller that does not supply a mime_type still works, getting
+        an empty one rather than a KeyError.
+        """
+        add_update_model = self.rpcs['vger.add_update_model']
+        parms = {'file name': 'thing.stp', 'file size': '10',
+                 'name': 'Thing', 'of_thing_oid': 'thing-0',
+                 'owner_oid': 'org-0'}
+        with mock.patch.object(vger, 'orb') as fake_orb, \
+                mock.patch.object(vger, 'clone') as fake_clone, \
+                mock.patch.object(vger, 'serialize') as fake_serialize:
+            fake_serialize.return_value = []
+            fake_orb.get_vault_fname.return_value = 'vault-name'
+            add_update_model(mtype_oid='mt-0', fpath='/tmp/thing.stp',
+                             parms=parms, cb_details=None)
+        rep_file_calls = [c for c in fake_clone.call_args_list
+                          if c.args and c.args[0] == 'RepresentationFile']
+        self.assertEqual('', rep_file_calls[0].kwargs.get('mime_type'))
+
     def test_04_search_exact(self):
         """CASE: search_exact() passes its keyword args to the orb"""
         search_exact = self.rpcs['vger.search_exact']
