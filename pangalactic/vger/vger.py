@@ -333,6 +333,8 @@ class RepositoryService(ApplicationSession):
         # =====================================================================
         dispatcher.connect(self.on_log_info_msg, 'log info msg')
         dispatcher.connect(self.on_log_debug_msg, 'log debug msg')
+        dispatcher.connect(self.on_unresolved_activity_parents,
+                           'unresolved activity parents')
         atexit.register(self.shutdown)
         # load private key (raw format)
         key_path = os.path.join(home, 'vger.key')
@@ -364,6 +366,30 @@ class RepositoryService(ApplicationSession):
 
     def on_log_debug_msg(self, msg=''):
         orb.log.debug(msg)
+
+    def on_unresolved_activity_parents(self, activities=None):
+        """
+        Handle the "unresolved activity parents" signal sent by deserialize()
+        when an Activity names a parent activity that cannot be found.
+
+        On the server this is more serious than on a client:  the repository is
+        the authority, so if data arriving here is incomplete the repository is
+        at risk of storing activities that no client can place in a timeline --
+        and anything the repository then sends out will make clients report the
+        same thing.  There is no user to notify here, so make it loud in the
+        log.
+
+        Args:
+            activities (list of Activity):  the activities whose parent could
+                not be found
+        """
+        if not activities:
+            return
+        names = [(getattr(a, 'name', '') or a.oid) for a in activities]
+        orb.log.info('* WARNING: unresolved activity parents in deserialized '
+                     f'data: {names}')
+        orb.log.info('  (a sub-activity arrived without its parent -- the '
+                     'data received was incomplete)')
 
     def onDisconnect(self):
         self.log.info("* disconnected.")
