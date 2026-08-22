@@ -25,6 +25,8 @@ from twisted.python.failure import Failure
 # set the orb
 import pangalactic.core.set_uberorb
 
+from pangalactic.core import access
+
 from pangalactic.vger import userdir
 from pangalactic.vger import vger
 
@@ -73,6 +75,18 @@ class FakeActivity:
 
 class FakeMission(FakeActivity):
     """An Activity subclass, as Mission and Test both are."""
+
+
+class FakeActivityControl:
+    """Stands in for an ActivityControl -- a Decision or a Merge."""
+    def __init__(self, oid='an-oid'):
+        self.oid = oid
+        self.id = 'a-control'
+        self.frozen = False
+
+
+class FakeDecision(FakeActivityControl):
+    """An ActivityControl subclass, as Decision and Merge both are."""
 
 
 class FakeProduct:
@@ -396,7 +410,12 @@ class CheckOutRpcTests(unittest.TestCase):
         """
         check_out = self.rpcs['vger.check_out']
         details = SimpleNamespace(caller_authid='zaphod')
-        with mock.patch.object(vger, 'orb') as orb:
+        # NOTE: access.is_offline_excluded() resolves the excluded class
+        # names through the *access* module's orb, not vger's -- the rule has
+        # one definition and it lives there -- so both have to be stubbed.
+        with mock.patch.object(vger, 'orb') as orb, \
+                mock.patch.object(access, 'orb') as access_orb:
+            access_orb.classes = classes
             orb.select.return_value = FakePerson(id='zaphod')
             orb.get.return_value = obj
             orb.classes = classes
@@ -410,14 +429,18 @@ class CheckOutRpcTests(unittest.TestCase):
             orb.search_exact.return_value = []
             return check_out(['an-oid'], cb_details=details)
 
+    # is_offline_excluded() resolves these names through orb.classes, so a
+    # stubbed orb has to carry both entries or the rule matches nothing
+    CLASSES = {'Activity': FakeActivity,
+               'ActivityControl': FakeActivityControl}
+
     def test_01_activity_is_refused(self):
         """
         CASE: an Activity.  Refused -- editing one adjusts the times of the
         others in its timeline, so a claim on one does not cover the work,
         and access.py will not write it offline whatever is claimed.
         """
-        result = self._check_out(FakeActivity(),
-                                 {'Activity': FakeActivity})
+        result = self._check_out(FakeActivity(), self.CLASSES)
         self.assertEqual([], result['granted'])
         self.assertEqual({'an-oid': 'not_offline_editable'}, result['denied'])
 
@@ -427,22 +450,31 @@ class CheckOutRpcTests(unittest.TestCase):
         isinstance, so Mission and Test go with Activity rather than needing
         to be named.
         """
-        result = self._check_out(FakeMission(),
-                                 {'Activity': FakeActivity})
+        result = self._check_out(FakeMission(), self.CLASSES)
         self.assertEqual([], result['granted'])
         self.assertEqual({'an-oid': 'not_offline_editable'}, result['denied'])
 
-    def test_03_frozen_is_refused_first(self):
+    def test_03_activity_control_is_refused(self):
+        """
+        CASE: a Decision, which is an ActivityControl.  Refused too -- it is
+        not an Activity, but it sequences the activities in a timeline, so
+        the same reasoning covers it.
+        """
+        result = self._check_out(FakeDecision(), self.CLASSES)
+        self.assertEqual([], result['granted'])
+        self.assertEqual({'an-oid': 'not_offline_editable'}, result['denied'])
+
+    def test_04_frozen_is_refused_first(self):
         """
         CASE: a frozen object.  Still refused as frozen -- the Activity rule
         is added after that test, not in place of it.
         """
         frozen = FakeActivity()
         frozen.frozen = True
-        result = self._check_out(frozen, {'Activity': FakeActivity})
+        result = self._check_out(frozen, self.CLASSES)
         self.assertEqual({'an-oid': 'frozen'}, result['denied'])
 
-    def test_04_a_product_is_not_refused_by_this_rule(self):
+    def test_05_a_product_is_not_refused_by_this_rule(self):
         """
         CASE: something that is not an Activity.  It gets past the rule and
         on to the permission test, which is the next thing check_out asks.
@@ -452,8 +484,7 @@ class CheckOutRpcTests(unittest.TestCase):
         rather than being turned away earlier for being an activity.
         """
         with mock.patch.object(vger, 'get_perms', return_value=['view']):
-            result = self._check_out(FakeProduct(),
-                                     {'Activity': FakeActivity})
+            result = self._check_out(FakeProduct(), self.CLASSES)
         self.assertEqual([], result['granted'])
         self.assertEqual({'an-oid': 'no_permission'}, result['denied'])
 

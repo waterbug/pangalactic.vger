@@ -74,6 +74,7 @@ from pangalactic.core                  import (config, deleted, state,
                                                read_deleted, write_deleted,
                                                write_state)
 from pangalactic.core.access           import (get_owner_id, get_perms,
+                                               is_offline_excluded,
                                                is_cloaked, is_global_admin,
                                                modifiables)
 from pangalactic.core.clone            import clone
@@ -1544,17 +1545,19 @@ class RepositoryService(ApplicationSession):
                 if getattr(obj, 'frozen', False):
                     denied[oid] = 'frozen'
                     continue
-                # An Activity cannot be edited offline whatever claims are
-                # held on it (author, 2026-08-21):  changing a duration or a
-                # start time adjusts the times of the other activities in the
-                # timeline, so a claim on one activity does not cover the
-                # work.  access.py refuses the write (is_writable_now rule
-                # [5]) and PrepareForOfflineDialog does not offer them, so
-                # granting a claim here would record something that cannot be
-                # used.  Refused on the server too because the server is what
-                # decides:  a client that asks anyway must get the same
-                # answer.  Covers Mission and Test, both Activity subclasses.
-                if isinstance(obj, orb.classes['Activity']):
+                # The objects a timeline is made of cannot be edited
+                # offline whatever claims are held on them (author,
+                # 2026-08-21):  a timeline does not decompose into
+                # independently editable parts, so a claim on one of them
+                # would not cover the work.  access.py refuses the write
+                # (is_writable_now rule [5]) and PrepareForOfflineDialog does
+                # not offer them, so granting a claim here would record
+                # something that cannot be used.  Refused on the server too
+                # because the server is what decides:  a client that asks
+                # anyway must get the same answer.  Asked of
+                # access.is_offline_excluded(), which is where the rule is
+                # defined.
+                if is_offline_excluded(obj):
                     denied[oid] = 'not_offline_editable'
                     continue
                 existing = get_active_checkout(obj)
