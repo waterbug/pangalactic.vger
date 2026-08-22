@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 from twisted.python.failure import Failure
@@ -60,6 +61,30 @@ def register_rpcs():
         fn, name = call.args[0], call.args[1]
         rpcs[name] = fn
     return rpcs, session
+
+
+class FakeActivity:
+    """Stands in for an Activity: identity is what the rule tests."""
+    def __init__(self, oid='an-oid'):
+        self.oid = oid
+        self.id = 'an-activity'
+        self.frozen = False
+
+
+class FakeMission(FakeActivity):
+    """An Activity subclass, as Mission and Test both are."""
+
+
+class FakeProduct:
+    def __init__(self, oid='an-oid'):
+        self.oid = oid
+        self.id = 'a-product'
+        self.frozen = False
+
+
+class FakePerson:
+    def __init__(self, id=''):
+        self.id = id
 
 
 class FakeObj:
@@ -343,6 +368,94 @@ class SimpleRpcTests(unittest.TestCase):
         fake_orb.search_exact.assert_called_once_with(
                                         cname='HardwareProduct', id='HOG')
         self.assertEqual([{'oid': 'oid-0'}], res)
+
+
+class CheckOutRpcTests(unittest.TestCase):
+    """
+    Tests of vger.check_out's refusals.
+
+    Only the early ones are reachable without a database -- which is where
+    the Activity rule sits, deliberately:  an Activity is refused before any
+    question about claims or permissions is asked.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rpcs, cls.session = register_rpcs()
+
+    def _check_out(self, obj, classes):
+        """
+        Call vger.check_out for one object against a stubbed orb.
+
+        Args:
+            obj:  the object orb.get() should return
+            classes (dict):  stands in for orb.classes
+
+        Returns:
+            dict:  the rpc's result
+        """
+        check_out = self.rpcs['vger.check_out']
+        details = SimpleNamespace(caller_authid='zaphod')
+        with mock.patch.object(vger, 'orb') as orb:
+            orb.select.return_value = FakePerson(id='zaphod')
+            orb.get.return_value = obj
+            orb.classes = classes
+            # the claim is expanded to the object's directly related items
+            # before anything is decided;  here that is just the object
+            # itself.  NOTE: this has to be set -- a bare MagicMock iterates
+            # as empty, which silently expands the request to nothing and
+            # makes every assertion below pass for the wrong reason.
+            orb.get_checkout_set.return_value = [obj]
+            # no existing claims: get_active_checkout() searches for them
+            orb.search_exact.return_value = []
+            return check_out(['an-oid'], cb_details=details)
+
+    def test_01_activity_is_refused(self):
+        """
+        CASE: an Activity.  Refused -- editing one adjusts the times of the
+        others in its timeline, so a claim on one does not cover the work,
+        and access.py will not write it offline whatever is claimed.
+        """
+        result = self._check_out(FakeActivity(),
+                                 {'Activity': FakeActivity})
+        self.assertEqual([], result['granted'])
+        self.assertEqual({'an-oid': 'not_offline_editable'}, result['denied'])
+
+    def test_02_activity_subclass_is_refused(self):
+        """
+        CASE: a Mission, which is an Activity subclass.  The test is by
+        isinstance, so Mission and Test go with Activity rather than needing
+        to be named.
+        """
+        result = self._check_out(FakeMission(),
+                                 {'Activity': FakeActivity})
+        self.assertEqual([], result['granted'])
+        self.assertEqual({'an-oid': 'not_offline_editable'}, result['denied'])
+
+    def test_03_frozen_is_refused_first(self):
+        """
+        CASE: a frozen object.  Still refused as frozen -- the Activity rule
+        is added after that test, not in place of it.
+        """
+        frozen = FakeActivity()
+        frozen.frozen = True
+        result = self._check_out(frozen, {'Activity': FakeActivity})
+        self.assertEqual({'an-oid': 'frozen'}, result['denied'])
+
+    def test_04_a_product_is_not_refused_by_this_rule(self):
+        """
+        CASE: something that is not an Activity.  It gets past the rule and
+        on to the permission test, which is the next thing check_out asks.
+
+        get_perms is stubbed to withhold 'modify', so the refusal that comes
+        back is "no_permission" -- proving the object reached that test
+        rather than being turned away earlier for being an activity.
+        """
+        with mock.patch.object(vger, 'get_perms', return_value=['view']):
+            result = self._check_out(FakeProduct(),
+                                     {'Activity': FakeActivity})
+        self.assertEqual([], result['granted'])
+        self.assertEqual({'an-oid': 'no_permission'}, result['denied'])
 
 
 class RepositoryServiceTests(unittest.TestCase):

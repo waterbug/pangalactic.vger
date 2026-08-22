@@ -1444,8 +1444,11 @@ class RepositoryService(ApplicationSession):
 
             A claim on an object extends to its *directly* related objects
             (orb.get_checkout_set()) -- for a Product that means its Acus,
-            Ports, Activities and Models, since those are what one actually
-            edits while working on it.  Checking out an assembly and then
+            Ports, Requirements and Models, since those are what one actually
+            edits while working on it.  (Activities were in that set until
+            2026-08-21;  they are excluded from offline work now, so they
+            were dropped from CHECKOUT_EXPANSION rather than left to be
+            denied on every product claim.)  Checking out an assembly and then
             being unable to change its Acus would be useless, and -- the other
             half of the same point -- claiming the assembly while leaving its
             Acus editable by everyone else would not be a claim at all.
@@ -1509,7 +1512,8 @@ class RepositoryService(ApplicationSession):
                 dict:  {'granted': [oids],
                         'denied': {oid: reason}}
                     where reason is one of "unknown_oid", "frozen",
-                    "no_permission", or "already_held_by:<userid>".
+                    "not_offline_editable", "no_permission", or
+                    "already_held_by:<userid>".
             """
             orb.log.info('* [rpc] vger.check_out() ...')
             userid = getattr(cb_details, 'caller_authid', '')
@@ -1539,6 +1543,19 @@ class RepositoryService(ApplicationSession):
                 # would be meaningless
                 if getattr(obj, 'frozen', False):
                     denied[oid] = 'frozen'
+                    continue
+                # An Activity cannot be edited offline whatever claims are
+                # held on it (author, 2026-08-21):  changing a duration or a
+                # start time adjusts the times of the other activities in the
+                # timeline, so a claim on one activity does not cover the
+                # work.  access.py refuses the write (is_writable_now rule
+                # [5]) and PrepareForOfflineDialog does not offer them, so
+                # granting a claim here would record something that cannot be
+                # used.  Refused on the server too because the server is what
+                # decides:  a client that asks anyway must get the same
+                # answer.  Covers Mission and Test, both Activity subclasses.
+                if isinstance(obj, orb.classes['Activity']):
+                    denied[oid] = 'not_offline_editable'
                     continue
                 existing = get_active_checkout(obj)
                 if existing is not None:
