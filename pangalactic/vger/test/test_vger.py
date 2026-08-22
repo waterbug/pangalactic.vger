@@ -89,6 +89,16 @@ class FakeDecision(FakeActivityControl):
     """An ActivityControl subclass, as Decision and Merge both are."""
 
 
+class FakeRepFile:
+    """Stands in for a RepresentationFile that references others."""
+    def __init__(self, of_object='a-model'):
+        self.oid = 'rf-oid'
+        self.id = 'a-rep-file'
+        self.user_file_name = 'asm.stp'
+        self.of_object = of_object
+        self.component_files = []
+
+
 class FakeProduct:
     def __init__(self, oid='an-oid'):
         self.oid = oid
@@ -487,6 +497,91 @@ class CheckOutRpcTests(unittest.TestCase):
             result = self._check_out(FakeProduct(), self.CLASSES)
         self.assertEqual([], result['granted'])
         self.assertEqual({'an-oid': 'no_permission'}, result['denied'])
+
+
+class AddComponentFileRpcTests(unittest.TestCase):
+    """
+    Tests of vger.add_component_file's refusals.
+
+    A CAD assembly exported as a set of files needs every file transferred,
+    not just the one the user chose.  This rpc records each referenced file
+    against the file that references it.  Only its guards are reachable
+    without a database, which is where the cases below stop.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rpcs, cls.session = register_rpcs()
+
+    def _call(self, referencing, parms=None, perms=('modify',)):
+        add_component_file = self.rpcs['vger.add_component_file']
+        details = SimpleNamespace(caller_authid='zaphod')
+        with mock.patch.object(vger, 'orb') as orb, \
+                mock.patch.object(vger, 'get_perms', return_value=list(perms)):
+            orb.select.return_value = FakePerson(id='zaphod')
+            orb.get.return_value = referencing
+            return add_component_file(rep_file_oid='rf-oid',
+                                      fpath='/tmp/part.stp',
+                                      parms=parms or {'file name': 'part.stp',
+                                                      'file size': '10'},
+                                      cb_details=details)
+
+    def test_01_unknown_referencing_file_is_refused(self):
+        """
+        CASE: the file said to reference this one does not exist.  Nothing to
+        attach it to.
+        """
+        fpath, sobjs = self._call(None)
+        self.assertEqual('/tmp/part.stp', fpath)
+        self.assertEqual([], sobjs)
+
+    def test_02_a_file_belonging_to_no_model_is_refused(self):
+        """
+        CASE: the referencing file has no model.  A component file joins the
+        model of the file that references it, so there is nowhere to put it.
+        """
+        referencing = FakeRepFile(of_object=None)
+        fpath, sobjs = self._call(referencing)
+        self.assertEqual([], sobjs)
+
+    def test_03_no_permission_on_the_model_is_refused(self):
+        """
+        CASE: the caller may not modify the model.  Authorization is the
+        model's, since that is what gains a file -- checked with the same
+        get_perms() as everything else, so this cannot grant access the user
+        would not otherwise have.
+        """
+        referencing = FakeRepFile()
+        fpath, sobjs = self._call(referencing, perms=('view',))
+        self.assertEqual([], sobjs)
+
+    def test_04_a_file_with_no_name_is_refused(self):
+        """
+        CASE: no file name.  The name is what a reference is made under, so
+        a nameless component file could never be resolved.
+        """
+        referencing = FakeRepFile()
+        fpath, sobjs = self._call(referencing, parms={'file size': '10'})
+        self.assertEqual([], sobjs)
+
+    def test_05_an_already_recorded_file_is_not_duplicated(self):
+        """
+        CASE: this referencing file already names a file called part.stp.
+
+        Returned rather than duplicated:  an import can legitimately be
+        repeated, and a part shared by two subassemblies is named more than
+        once in the same set.
+        """
+        existing = FakeRepFile()
+        existing.user_file_name = 'part.stp'
+        referencing = FakeRepFile()
+        referencing.component_files = [existing]
+        with mock.patch.object(vger, 'serialize',
+                               return_value=['serialized']) as ser:
+            fpath, sobjs = self._call(referencing)
+        self.assertEqual(['serialized'], sobjs)
+        ser.assert_called_once()
+        self.assertEqual([existing], ser.call_args.args[1])
 
 
 class RepositoryServiceTests(unittest.TestCase):

@@ -680,6 +680,95 @@ class RepositoryService(ApplicationSession):
         yield self.register(add_update_model, 'vger.add_update_model',
                             RegisterOptions(details_arg='cb_details'))
 
+        def add_component_file(rep_file_oid='', fpath='', parms=None,
+                               cb_details=None):
+            """
+            Add a RepresentationFile for a file that another one references.
+
+            A CAD assembly may be exported as a *set* of files:  the assembly
+            file names its subassembly and part files through
+            EXTERNAL_SOURCE, and cannot be read without them.  Transferring
+            only the file the user chose leaves the repository holding an
+            assembly whose geometry is mostly elsewhere -- which renders as a
+            few components and a lot of nothing.
+
+            The new file joins the *same* Model as the file that references
+            it, rather than getting a Model of its own:  it is not a model of
+            anything in its own right, it is part of the one the user
+            imported.  "component_file_of" records which file needs which.
+
+            Distinct from add_update_model() because that one always creates
+            a Model, and calling it per component file would leave a Model
+            per file, all of the same product.
+
+            Keyword Args:
+                rep_file_oid (str):  oid of the RepresentationFile that
+                    references this file
+                fpath (str):  local path on the caller's machine, returned so
+                    the caller knows which upload this reply belongs to
+                parms (dict):  "file name", "file size", "mime_type"
+                cb_details:  added by crossbar; not in the rpc signature
+
+            Return:
+                result (tuple):  (fpath, serialized objects), as
+                add_update_model() returns -- or (fpath, []) if the
+                referencing file is unknown or the caller may not modify it.
+            """
+            orb.log.info('* [rpc] vger.add_component_file() ...')
+            parms = parms or {}
+            userid = getattr(cb_details, 'caller_authid', 'unknown')
+            user_obj = orb.select('Person', id=userid)
+            referencing = orb.get(rep_file_oid)
+            if referencing is None:
+                orb.log.info(f'  no RepresentationFile "{rep_file_oid}".')
+                return fpath, []
+            model = getattr(referencing, 'of_object', None)
+            if model is None:
+                orb.log.info('  referencing file belongs to no model.')
+                return fpath, []
+            # authorization is the model's, since that is what gains a file
+            if 'modify' not in get_perms(model, user=user_obj):
+                orb.log.info(f'  "{userid}" may not modify '
+                             f'"{getattr(model, "id", "?")}".')
+                return fpath, []
+            fname = parms.get('file name') or ''
+            if not fname:
+                orb.log.info('  no file name given.')
+                return fpath, []
+            # idempotent:  a file already recorded under this name for this
+            # referencing file is returned rather than duplicated.  An import
+            # can legitimately be repeated, and a shared part file is named
+            # by more than one assembly in the same set.
+            for existing in (referencing.component_files or []):
+                if existing.user_file_name == fname:
+                    orb.log.info(f'  "{fname}" already recorded.')
+                    return fpath, serialize(orb, [existing])
+            dts = dtstamp()
+            base = '.'.join(fname.split('.')[:-1]) or fname
+            rep_file = clone('RepresentationFile', of_object=model,
+                             id=base.replace(' ', '_').lower() + '-'
+                                + str(uuid4().int)[:6] + '_file',
+                             name=base + ' file',
+                             user_file_name=fname,
+                             file_size=parms.get('file size'),
+                             mime_type=parms.get('mime_type', '') or '',
+                             component_file_of=referencing,
+                             creator=user_obj, modifier=user_obj,
+                             create_datetime=dts, mod_datetime=dts)
+            vault_fname = orb.get_vault_fname(rep_file)
+            rep_file.url = os.path.join('vault://', vault_fname)
+            orb.save([rep_file])
+            orb.log.info(f'  component file "{fname}" added to model '
+                         f'"{getattr(model, "id", "?")}".')
+            sobjs = serialize(orb, [rep_file])
+            owner = getattr(model, 'owner', None)
+            if owner is not None:
+                self.publish('vger.channel.' + owner.id, {'new': sobjs})
+            return fpath, sobjs
+
+        yield self.register(add_component_file, 'vger.add_component_file',
+                            RegisterOptions(details_arg='cb_details'))
+
         def add_update_doc(fpath= '', parms=None, cb_details=None):
             """
             Add or update a Document instance and associated DocumentReference
