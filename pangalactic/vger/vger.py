@@ -649,9 +649,13 @@ class RepositoryService(ApplicationSession):
             if not owner:
                 # error condition -- no owner and no project to default to
                 return 'model has no owner', []
+            # public follows the thing modelled:  a model of a public
+            # library product is as public as the product, and leaving it
+            # unset is what kept library models from reaching clients
             model = clone('Model', of_thing=thing, type_of_model=mtype,
                           id=m_id, name=m_name,
                           description=m_desc, owner=owner,
+                          public=bool(getattr(thing, 'public', False)),
                           creator=user_obj, modifier=user_obj,
                           create_datetime=dts, mod_datetime=dts)
             orb.log.info(f'  new model created: "{model.name}"')
@@ -2029,10 +2033,21 @@ class RepositoryService(ApplicationSession):
             models = orb.get_by_type('Model')
             non_proj_models = [o for o in models if o.owner not in projects]
             model_oids = set([o.oid for o in non_proj_models])
+            # A model's own "public" is usually unset -- nothing sets it when
+            # a model is created -- so filtering the library purely on it
+            # withheld the models of public library products, which is most
+            # of them.  A model of a public product is as public as the
+            # product:  it is what the product *is*, and for a STEP model it
+            # is the only place the geometry exists.
+            public_by_thing = set()
+            for m in non_proj_models:
+                thing = getattr(m, 'of_thing', None)
+                if thing is not None and getattr(thing, 'public', False):
+                    public_by_thing.add(m.oid)
             all_lib_oids = hw_oids | ded_oids | template_oids | model_oids
             # exclude reference data
-            public_lib_oids = list((all_lib_oids & all_public_oids)
-                                    - set(ref_oids))
+            public_lib_oids = list(((all_lib_oids & all_public_oids)
+                                    | public_by_thing) - set(ref_oids))
             # public_oids = list(set(public_lib_oids) - set(ref_oids))
             if public_lib_oids:
                 server_dts = {oid: dts for oid, dts
@@ -3242,8 +3257,15 @@ class RepositoryService(ApplicationSession):
                     if (getattr(obj, 'public', True)
                         or 'view' in get_perms(obj, user=user_obj)):
                         auth_objs.append(obj)
+                # include_models:  a product whose model is a STEP
+                # assembly is incomplete without that model and its files --
+                # nothing to render, nothing to compute mass properties
+                # from.  The client is meant to hold everything the server
+                # knows about a product (author, 2026-08-25), and this is the
+                # path by which it gets a product.
                 return serialize(orb, auth_objs,
-                                 include_components=include_components)
+                                 include_components=include_components,
+                                 include_models=True)
             else:
                 return []
 
