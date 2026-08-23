@@ -685,6 +685,7 @@ class RepositoryService(ApplicationSession):
                             RegisterOptions(details_arg='cb_details'))
 
         def add_component_file(rep_file_oid='', fpath='', parms=None,
+                               of_thing_oid='', mtype_oid='',
                                cb_details=None):
             """
             Add a RepresentationFile for a file that another one references.
@@ -711,6 +712,16 @@ class RepositoryService(ApplicationSession):
                 fpath (str):  local path on the caller's machine, returned so
                     the caller knows which upload this reply belongs to
                 parms (dict):  "file name", "file size", "mime_type"
+                of_thing_oid (str):  the product this file is the model of,
+                    if it is known.  A STEP file in an export set defines a
+                    product and says which -- `main_body_back_prt.stp` *is*
+                    the model of MAIN_BODY_BACK -- so given this, the file
+                    gets a Model of its own product rather than joining the
+                    referencing file's.  That is what lets a subassembly be
+                    opened in the 3D viewer on its own, and it is what makes
+                    the file graph and the assembly graph two views of one
+                    thing.  Without it, the older behaviour.
+                mtype_oid (str):  ModelType for that Model (default MCAD)
                 cb_details:  added by crossbar; not in the rpc signature
 
             Return:
@@ -749,6 +760,29 @@ class RepositoryService(ApplicationSession):
                     return fpath, serialize(orb, [existing])
             dts = dtstamp()
             base = '.'.join(fname.split('.')[:-1]) or fname
+            # If the caller knows which product this file models, give it a
+            # Model of that product.  The referencing file's model is the
+            # fallback, and stays the answer for a file whose product cannot
+            # be identified -- the file is still transferred and still
+            # linked, it just is not identified with anything.
+            thing = orb.get(of_thing_oid) if of_thing_oid else None
+            if thing is not None:
+                mtype = orb.get(mtype_oid) if mtype_oid else None
+                if mtype is None:
+                    mtype = orb.get('pgefobjects:ModelType.MCAD')
+                m_name = base
+                model = clone('Model', of_thing=thing, type_of_model=mtype,
+                              id=base.replace(' ', '_').lower() + '-'
+                                 + str(uuid4().int)[:6],
+                              name=m_name,
+                              description=f'STEP model of {thing.id}',
+                              owner=getattr(model, 'owner', None),
+                              public=bool(getattr(thing, 'public', False)),
+                              creator=user_obj, modifier=user_obj,
+                              create_datetime=dts, mod_datetime=dts)
+                orb.save([model])
+                orb.log.info(f'  model of "{thing.id}" created for '
+                             f'"{fname}".')
             rep_file = clone('RepresentationFile', of_object=model,
                              id=base.replace(' ', '_').lower() + '-'
                                 + str(uuid4().int)[:6] + '_file',
@@ -764,7 +798,8 @@ class RepositoryService(ApplicationSession):
             orb.save([rep_file])
             orb.log.info(f'  component file "{fname}" added to model '
                          f'"{getattr(model, "id", "?")}".')
-            sobjs = serialize(orb, [rep_file])
+            sobjs = serialize(orb, [model, rep_file] if thing is not None
+                              else [rep_file])
             owner = getattr(model, 'owner', None)
             if owner is not None:
                 self.publish('vger.channel.' + owner.id, {'new': sobjs})
