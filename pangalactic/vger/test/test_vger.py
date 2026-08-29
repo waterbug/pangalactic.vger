@@ -14,8 +14,10 @@ verifies vger can be imported with no python-ldap at all does it honestly, in a
 subprocess in which "import ldap" is made to fail.
 """
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -170,7 +172,7 @@ class RpcRegistrationTests(unittest.TestCase):
                     'vger.get_mod_dts', 'vger.get_caches', 'vger.get_parmz',
                     'vger.get_user_roles',
                     'vger.get_user_object', 'vger.search_ldap',
-                    'vger.get_people'}
+                    'vger.get_people', 'vger.missing_vault_files'}
         self.assertEqual(set(), expected - set(self.rpcs))
 
     def test_03_rpc_names_match_function_names(self):
@@ -392,6 +394,295 @@ class SimpleRpcTests(unittest.TestCase):
         fake_orb.search_exact.assert_called_once_with(
                                         cname='HardwareProduct', id='HOG')
         self.assertEqual([{'oid': 'oid-0'}], res)
+
+
+class VaultFileRpcTests(unittest.TestCase):
+    """
+    The rpcs that move a file's bytes, and the rule they exist to keep:  a
+    RepresentationFile in the repository has its file in the vault.
+
+    These use a real temporary directory as the vault, because what is being
+    tested is what ends up on disk -- a mock would assert the calls and miss
+    the bytes.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rpcs, cls.session = register_rpcs()
+
+    def setUp(self):
+        self.vault = tempfile.mkdtemp(prefix='vger_vault_')
+        self.caller = SimpleNamespace(caller_authid='zaphod')
+
+    def tearDown(self):
+        shutil.rmtree(self.vault, ignore_errors=True)
+
+    def fake_orb(self, rep_files=None, known_user=True):
+        """
+        An orb whose vault is the temp directory and whose get() answers with
+        the given RepresentationFile stand-ins.
+        """
+        rep_files = rep_files or {}
+        orb = mock.MagicMock()
+        orb.vault = self.vault
+        orb.get.side_effect = lambda oid: rep_files.get(oid)
+        orb.select.return_value = FakePerson(id='zaphod') if known_user \
+            else None
+        orb.get_vault_fname.side_effect = (
+                        lambda rf: rf.oid + '_' + rf.user_file_name)
+        orb.get_vault_fpath.side_effect = (
+            lambda rf: os.path.join(self.vault,
+                                    rf.oid + '_' + rf.user_file_name))
+        return orb
+
+    def rep_file(self, oid='rf-1', fname='asm.stp', size=0, of_object=None):
+        if of_object is None:
+            of_object = FakeObj(oid='model-1', id='a-model')
+        return FakeObj(oid=oid, id=oid, user_file_name=fname, file_size=size,
+                       of_object=of_object)
+
+    def allowing(self, perms=('view',)):
+        """
+        Stand in for access.get_perms().  Patched rather than exercised:  the
+        policy itself is tested where it lives, in
+        pangalactic.core/test/test_digital_files.py, and rules in
+        pangalactic.core.access resolve orb.classes through *that* module's
+        orb, which this harness does not patch.
+        """
+        return mock.patch.object(vger, 'get_perms',
+                                 lambda obj, user=None, **kw: list(perms))
+
+    def vault_write(self, rep_file, data):
+        path = os.path.join(self.vault,
+                            rep_file.oid + '_' + rep_file.user_file_name)
+        with open(path, 'wb') as f:
+            f.write(data)
+        return path
+
+    # ---- upload_chunk ----------------------------------------------------
+
+    def test_01_chunks_are_written_in_order(self):
+        """CASE: an ordinary upload assembles the file from its chunks"""
+        upload_chunk = self.rpcs['vger.upload_chunk']
+        with mock.patch.object(vger, 'orb', self.fake_orb()):
+            for seq, data in enumerate([b'aaa', b'bbb', b'ccc']):
+                upload_chunk(fname='rf-1_asm.stp', seq=seq, data=data,
+                             cb_details=self.caller)
+        with open(os.path.join(self.vault, 'rf-1_asm.stp'), 'rb') as f:
+            self.assertEqual(b'aaabbbccc', f.read())
+
+    def test_02_a_retried_upload_replaces_what_arrived_before(self):
+        """
+        CASE: an upload that failed part way through is sent again.
+
+        The file used to be opened for append on every chunk, so the retry
+        doubled the bytes that had already arrived.  Retrying is normal now
+        that a file goes up whenever its RepresentationFile is synced.
+        """
+        upload_chunk = self.rpcs['vger.upload_chunk']
+        with mock.patch.object(vger, 'orb', self.fake_orb()):
+            # a transfer that died after the first of three chunks
+            upload_chunk(fname='rf-1_asm.stp', seq=0, data=b'aaa',
+                         cb_details=self.caller)
+            # ... and the whole thing sent again
+            for seq, data in enumerate([b'aaa', b'bbb', b'ccc']):
+                upload_chunk(fname='rf-1_asm.stp', seq=seq, data=data,
+                             cb_details=self.caller)
+        with open(os.path.join(self.vault, 'rf-1_asm.stp'), 'rb') as f:
+            self.assertEqual(b'aaabbbccc', f.read())
+
+    def test_03_an_unknown_user_may_not_upload(self):
+        """CASE: the caller must be a known Person"""
+        upload_chunk = self.rpcs['vger.upload_chunk']
+        orb = self.fake_orb()
+        orb.select.return_value = None
+        with mock.patch.object(vger, 'orb', orb):
+            self.assertRaises(vger.ApplicationError, upload_chunk,
+                              fname='rf-1_asm.stp', seq=0, data=b'x',
+                              cb_details=SimpleNamespace(
+                                                caller_authid='nobody'))
+        self.assertEqual([], os.listdir(self.vault))
+
+    # ---- download_chunk --------------------------------------------------
+
+    def test_04_absent_bytes_are_reported_not_raised(self):
+        """
+        CASE: the object exists and its file does not.
+
+        This used to open the vault path unguarded, so a request for a file
+        whose bytes had not arrived raised out of the rpc.  The caller now
+        gets the same empty answer it gets for an unknown file.
+        """
+        download_chunk = self.rpcs['vger.download_chunk']
+        rf = self.rep_file(size=9)
+        with mock.patch.object(vger, 'orb', self.fake_orb({'rf-1': rf})), \
+                self.allowing():
+            result = download_chunk(digital_file_oid='rf-1', seq=0,
+                                    cb_details=self.caller)
+        self.assertEqual(('rf-1', 0, b''), result)
+
+    def test_05_present_bytes_are_served(self):
+        """
+        CASE: the ordinary one.  The guard must not have broken the path it
+        guards -- a neighbouring case that cannot pass vacuously.
+        """
+        download_chunk = self.rpcs['vger.download_chunk']
+        rf = self.rep_file(size=9)
+        self.vault_write(rf, b'aaabbbccc')
+        with mock.patch.object(vger, 'orb', self.fake_orb({'rf-1': rf})), \
+                self.allowing():
+            oid, seq, chunk = download_chunk(digital_file_oid='rf-1', seq=0,
+                                             cb_details=self.caller)
+        self.assertEqual(('rf-1', 0, b'aaabbbccc'), (oid, seq, chunk))
+
+    # ---- download_chunk authorization ------------------------------------
+    #
+    # This rpc used to check nothing at all:  an oid was enough to fetch the
+    # bytes it named.
+
+    def test_05a_an_unknown_user_may_not_download(self):
+        """
+        CASE: a caller the repository has never heard of.  upload_chunk() has
+        always refused one; download_chunk() did not.
+        """
+        download_chunk = self.rpcs['vger.download_chunk']
+        rf = self.rep_file(size=9)
+        self.vault_write(rf, b'aaabbbccc')
+        orb = self.fake_orb({'rf-1': rf}, known_user=False)
+        with mock.patch.object(vger, 'orb', orb), self.allowing():
+            self.assertRaises(vger.ApplicationError, download_chunk,
+                              digital_file_oid='rf-1', seq=0,
+                              cb_details=SimpleNamespace(
+                                                caller_authid='nobody'))
+
+    def test_05b_a_user_who_may_not_view_the_subject_is_refused(self):
+        """
+        CASE: a known user with no permission on what the file represents --
+        someone with no role in the project owning a cloaked assembly.
+        """
+        download_chunk = self.rpcs['vger.download_chunk']
+        rf = self.rep_file(size=9)
+        self.vault_write(rf, b'aaabbbccc')
+        with mock.patch.object(vger, 'orb', self.fake_orb({'rf-1': rf})), \
+                self.allowing(perms=[]):
+            self.assertRaises(vger.ApplicationError, download_chunk,
+                              digital_file_oid='rf-1', seq=0,
+                              cb_details=self.caller)
+
+    def test_05c_the_subject_is_what_is_asked_about(self):
+        """
+        CASE: the permission consulted is the one on `of_object`, not on the
+        file.
+
+        This is the whole point:  RepresentationFile is in
+        access.modifiables, which grants every user view/modify/delete on it,
+        so a gate on the file itself would authorize everybody.
+        """
+        download_chunk = self.rpcs['vger.download_chunk']
+        model = FakeObj(oid='model-9', id='the-model')
+        rf = self.rep_file(size=9, of_object=model)
+        self.vault_write(rf, b'aaabbbccc')
+        asked = []
+        def fake_perms(obj, user=None, **kw):
+            asked.append(getattr(obj, 'id', None))
+            return ['view']
+        with mock.patch.object(vger, 'orb', self.fake_orb({'rf-1': rf})), \
+                mock.patch.object(vger, 'get_perms', fake_perms):
+            download_chunk(digital_file_oid='rf-1', seq=0,
+                           cb_details=self.caller)
+        self.assertEqual(['the-model'], asked)
+
+    def test_05d_a_file_representing_nothing_is_refused(self):
+        """
+        CASE: a file with no `of_object`.  It has no permissions to inherit,
+        and nothing in the application makes one -- so it is refused rather
+        than served to anyone who names it.
+        """
+        download_chunk = self.rpcs['vger.download_chunk']
+        rf = self.rep_file(size=9, of_object=False)
+        rf.of_object = None
+        self.vault_write(rf, b'aaabbbccc')
+        with mock.patch.object(vger, 'orb', self.fake_orb({'rf-1': rf})), \
+                self.allowing():
+            self.assertRaises(vger.ApplicationError, download_chunk,
+                              digital_file_oid='rf-1', seq=0,
+                              cb_details=self.caller)
+
+    # ---- missing_vault_files ---------------------------------------------
+
+    def test_06_files_with_no_bytes_are_reported_missing(self):
+        """CASE: a file the vault does not hold"""
+        missing_vault_files = self.rpcs['vger.missing_vault_files']
+        with mock.patch.object(vger, 'orb', self.fake_orb()):
+            result = missing_vault_files(files={'rf-1_asm.stp': 9},
+                                         cb_details=self.caller)
+        self.assertEqual(['rf-1_asm.stp'], result)
+
+    def test_07_a_complete_file_is_not_reported(self):
+        """CASE: bytes present and the right length -- nothing to send"""
+        missing_vault_files = self.rpcs['vger.missing_vault_files']
+        self.vault_write(self.rep_file(), b'aaabbbccc')
+        with mock.patch.object(vger, 'orb', self.fake_orb()):
+            result = missing_vault_files(files={'rf-1_asm.stp': 9},
+                                         cb_details=self.caller)
+        self.assertEqual([], result)
+
+    def test_08_a_short_file_is_reported_missing(self):
+        """
+        CASE: an interrupted upload left a partial file.
+
+        Reporting it missing is what makes the transfer retried rather than
+        served:  a short file is a failed transfer, not a file.
+        """
+        missing_vault_files = self.rpcs['vger.missing_vault_files']
+        self.vault_write(self.rep_file(), b'aaa')
+        with mock.patch.object(vger, 'orb', self.fake_orb()):
+            result = missing_vault_files(files={'rf-1_asm.stp': 9},
+                                         cb_details=self.caller)
+        self.assertEqual(['rf-1_asm.stp'], result)
+
+    def test_09_a_file_the_repository_never_heard_of_is_reported(self):
+        """
+        CASE: the first upload of a new file, asked about before its object
+        exists.
+
+        This is the ordinary case, not an odd one:  the bytes are sent first,
+        so the repository cannot know the object yet.  An answer keyed on the
+        object would skip every new file -- which is exactly the bug an
+        earlier draft of this rpc had.
+        """
+        missing_vault_files = self.rpcs['vger.missing_vault_files']
+        orb = self.fake_orb()
+        orb.get.side_effect = lambda oid: None      # no such object, at all
+        with mock.patch.object(vger, 'orb', orb):
+            result = missing_vault_files(files={'brand-new_asm.stp': 12},
+                                         cb_details=self.caller)
+        self.assertEqual(['brand-new_asm.stp'], result)
+
+    def test_10_an_unsafe_name_is_not_examined(self):
+        """
+        CASE: a name that would escape the vault.  Refused the way
+        upload_chunk() refuses it, rather than stat-ing whatever it points
+        at.
+        """
+        missing_vault_files = self.rpcs['vger.missing_vault_files']
+        with mock.patch.object(vger, 'orb', self.fake_orb()):
+            result = missing_vault_files(
+                            files={'../../etc/passwd': 1, '/etc/passwd': 1},
+                            cb_details=self.caller)
+        self.assertEqual(['../../etc/passwd', '/etc/passwd'], sorted(result))
+
+    def test_11_size_is_optional(self):
+        """
+        CASE: an expected size of 0 -- a file whose size was never recorded.
+        Presence is all there is to go on, so a non-empty file passes.
+        """
+        missing_vault_files = self.rpcs['vger.missing_vault_files']
+        self.vault_write(self.rep_file(), b'x')
+        with mock.patch.object(vger, 'orb', self.fake_orb()):
+            result = missing_vault_files(files={'rf-1_asm.stp': 0},
+                                         cb_details=self.caller)
+        self.assertEqual([], result)
 
 
 class CheckOutRpcTests(unittest.TestCase):

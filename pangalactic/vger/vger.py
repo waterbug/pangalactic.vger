@@ -921,9 +921,18 @@ class RepositoryService(ApplicationSession):
                               'rejected.')
                 raise ApplicationError('vger.error.invalid_argument',
                                        'invalid vault file name')
-            # write to file
+            # write to file.
+            #
+            # NOTE: seq 0 *replaces* the file;  later chunks append.  It used
+            # to append unconditionally, which made an upload impossible to
+            # retry:  an interrupted transfer leaves a short file, and
+            # sending it again doubled what had already arrived instead of
+            # replacing it.  Retrying is not an edge case now that a file
+            # goes up whenever its RepresentationFile is synced, which may be
+            # long after the object was made and over whatever connection
+            # happens to be available.
             vault_fpath = os.path.join(orb.vault, fname)
-            with open(vault_fpath, 'ab') as f:
+            with open(vault_fpath, 'wb' if not seq else 'ab') as f:
                 f.write(data)
             return seq
 
@@ -966,8 +975,48 @@ class RepositoryService(ApplicationSession):
             orb.log.info('* [rpc] vger.download_chunk() ...')
             orb.log.info(f'  digital_file_oid: {digital_file_oid}')
             orb.log.info(f'  seq of chunk requested: {seq}')
+            # ----------------------------------------------------------
+            # Authorization (added 2026-08-29).  This rpc used to check
+            # nothing at all -- not even that the caller was a known user,
+            # which upload_chunk() does -- so an oid was sufficient to fetch
+            # the bytes it named.
+            #
+            # The permission that matters is the one on **what the file
+            # represents**, not on the file.  RepresentationFile is in
+            # access.modifiables, which grants every user view/modify/delete
+            # on it, so asking about the file itself would authorize
+            # everyone;  the same reasoning as add_component_file(), where
+            # "authorization is the model's, since that is what gains a
+            # file".
+            #
+            # Verified against the test project rather than reasoned:  a
+            # cloaked assembly's Model gives 'view' to a user with a role in
+            # the owning project and an empty list to one without, and a
+            # public model gives 'view' to anyone.  A global admin has view
+            # on everything.
+            # ----------------------------------------------------------
+            userid = getattr(cb_details, 'caller_authid', '')
+            user_obj = orb.select('Person', id=userid)
+            if not user_obj:
+                orb.log.error(f'  unknown user "{userid}" -- rejected.')
+                raise ApplicationError('vger.error.not_authorized',
+                                       'download not authorized')
             digital_file = orb.get(digital_file_oid)
             if digital_file:
+                subject = getattr(digital_file, 'of_object', None)
+                if subject is None:
+                    # a file that represents nothing has no permissions to
+                    # inherit, and nothing in the application makes one
+                    orb.log.error(f'  "{digital_file_oid}" belongs to no '
+                                  'object -- rejected.')
+                    raise ApplicationError('vger.error.not_authorized',
+                                           'download not authorized')
+                if 'view' not in get_perms(subject, user=user_obj):
+                    subj_id = getattr(subject, 'id', '?')
+                    orb.log.error(f'  "{userid}" may not view "{subj_id}"'
+                                  ' -- rejected.')
+                    raise ApplicationError('vger.error.not_authorized',
+                                           'download not authorized')
                 # NOTE: chunk_size could be set as a kwarg if necessary
                 chunk_size = 2**19
                 fname = digital_file.user_file_name
@@ -975,6 +1024,21 @@ class RepositoryService(ApplicationSession):
                 orb.log.info(f'  chunk size: {chunk_size}')
                 # read from file
                 vault_fpath = orb.get_vault_fpath(digital_file)
+                if not os.path.exists(vault_fpath):
+                    # The object exists and its bytes do not.  This must not
+                    # raise:  the caller gets an empty chunk, the same answer
+                    # it gets for a file that is not there at all, and the
+                    # log says which file it was.
+                    #
+                    # It should also not *happen*.  A RepresentationFile is
+                    # meant to reach the repository only together with its
+                    # bytes (pangalactic.core.digital_files), and
+                    # missing_vault_files() below is how a client finds the
+                    # ones that did not.  This is the guard that keeps the
+                    # broken case reportable rather than fatal.
+                    orb.log.error(f'  no bytes in the vault for "{fname}" '
+                                  f'(oid {digital_file_oid}).')
+                    return digital_file_oid, seq, b''
                 fsize = digital_file.file_size
                 numchunks = math.ceil(fsize / chunk_size)
                 vault_fname = orb.get_vault_fname(digital_file)
@@ -1005,6 +1069,63 @@ class RepositoryService(ApplicationSession):
                 return digital_file_oid, seq, b''
 
         yield self.register(download_chunk, 'vger.download_chunk',
+                            RegisterOptions(details_arg='cb_details'))
+
+        def missing_vault_files(files=None, cb_details=None):
+            """
+            Say which of these files the vault does not hold.
+
+            A RepresentationFile means nothing without its file, so a client
+            syncing one sends the bytes too.  Rather than have the client
+            remember what it has already sent -- a second record of the same
+            fact, which can drift out of step with the vault -- it asks.
+
+            **Keyed on the vault file name, not on an oid**, and answered by
+            looking at the vault alone.  The bytes are sent *before* the
+            object that describes them, so at the moment a client asks, the
+            repository has usually never heard of the file:  a lookup by oid
+            could only answer "unknown", and the first upload of every new
+            file would be skipped.  Bytes arriving before their object is the
+            right order and needs no reconciling -- the vault name is derived
+            from the oid, so the two find each other whenever the object
+            lands.
+
+            The caller supplies the size it expects, because a short file is
+            a failed transfer and not a file:  reporting it missing is what
+            makes an interrupted upload retry rather than be served.
+
+            Keyword Args:
+                files (dict):  {vault file name: expected size in bytes}
+                cb_details:  added by crossbar; not included in rpc signature
+
+            Return:
+                result (list of str):  the vault file names that are absent,
+                empty, or the wrong length.  An unsafe name is reported
+                missing rather than examined -- the same names
+                `upload_chunk()` refuses, refused here for the same reason.
+            """
+            orb.log.info('* [rpc] vger.missing_vault_files() ...')
+            missing = []
+            for fname, expected in (files or {}).items():
+                if not valid_vault_fname(fname):
+                    orb.log.error(f'  invalid vault file name "{fname}".')
+                    missing.append(fname)
+                    continue
+                try:
+                    actual = os.path.getsize(os.path.join(orb.vault, fname))
+                except OSError:
+                    missing.append(fname)
+                    continue
+                try:
+                    expected = int(expected or 0)
+                except (TypeError, ValueError):
+                    expected = 0
+                if not actual or (expected and actual != expected):
+                    missing.append(fname)
+            orb.log.info(f'  {len(missing)} of {len(files or {})} missing.')
+            return missing
+
+        yield self.register(missing_vault_files, 'vger.missing_vault_files',
                             RegisterOptions(details_arg='cb_details'))
 
         def save(serialized_objs, cb_details=None):
