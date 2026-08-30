@@ -441,16 +441,17 @@ class VaultFileRpcTests(unittest.TestCase):
         return FakeObj(oid=oid, id=oid, user_file_name=fname, file_size=size,
                        of_object=of_object)
 
-    def allowing(self, perms=('view',)):
+    def deciding(self, may_fetch=True):
         """
-        Stand in for access.get_perms().  Patched rather than exercised:  the
-        policy itself is tested where it lives, in
+        Stand in for access.may_fetch_file().  Patched rather than exercised:
+        the policy itself is tested where it lives, in
         pangalactic.core/test/test_digital_files.py, and rules in
         pangalactic.core.access resolve orb.classes through *that* module's
-        orb, which this harness does not patch.
+        orb, which this harness does not patch -- a test calling the real one
+        here would match nothing and pass vacuously.
         """
-        return mock.patch.object(vger, 'get_perms',
-                                 lambda obj, user=None, **kw: list(perms))
+        return mock.patch.object(vger, 'may_fetch_file',
+                                 lambda rep_file, user: may_fetch)
 
     def vault_write(self, rep_file, data):
         path = os.path.join(self.vault,
@@ -516,7 +517,7 @@ class VaultFileRpcTests(unittest.TestCase):
         download_chunk = self.rpcs['vger.download_chunk']
         rf = self.rep_file(size=9)
         with mock.patch.object(vger, 'orb', self.fake_orb({'rf-1': rf})), \
-                self.allowing():
+                self.deciding():
             result = download_chunk(digital_file_oid='rf-1', seq=0,
                                     cb_details=self.caller)
         self.assertEqual(('rf-1', 0, b''), result)
@@ -530,7 +531,7 @@ class VaultFileRpcTests(unittest.TestCase):
         rf = self.rep_file(size=9)
         self.vault_write(rf, b'aaabbbccc')
         with mock.patch.object(vger, 'orb', self.fake_orb({'rf-1': rf})), \
-                self.allowing():
+                self.deciding():
             oid, seq, chunk = download_chunk(digital_file_oid='rf-1', seq=0,
                                              cb_details=self.caller)
         self.assertEqual(('rf-1', 0, b'aaabbbccc'), (oid, seq, chunk))
@@ -549,64 +550,49 @@ class VaultFileRpcTests(unittest.TestCase):
         rf = self.rep_file(size=9)
         self.vault_write(rf, b'aaabbbccc')
         orb = self.fake_orb({'rf-1': rf}, known_user=False)
-        with mock.patch.object(vger, 'orb', orb), self.allowing():
+        with mock.patch.object(vger, 'orb', orb), self.deciding():
             self.assertRaises(vger.ApplicationError, download_chunk,
                               digital_file_oid='rf-1', seq=0,
                               cb_details=SimpleNamespace(
                                                 caller_authid='nobody'))
 
-    def test_05b_a_user_who_may_not_view_the_subject_is_refused(self):
+    def test_05b_a_user_the_rule_refuses_gets_nothing(self):
         """
-        CASE: a known user with no permission on what the file represents --
-        someone with no role in the project owning a cloaked assembly.
+        CASE: may_fetch_file() says no -- someone with no role in the
+        organization that owns what the file represents.
         """
         download_chunk = self.rpcs['vger.download_chunk']
         rf = self.rep_file(size=9)
         self.vault_write(rf, b'aaabbbccc')
         with mock.patch.object(vger, 'orb', self.fake_orb({'rf-1': rf})), \
-                self.allowing(perms=[]):
+                self.deciding(may_fetch=False):
             self.assertRaises(vger.ApplicationError, download_chunk,
                               digital_file_oid='rf-1', seq=0,
                               cb_details=self.caller)
 
-    def test_05c_the_subject_is_what_is_asked_about(self):
+    def test_05c_the_rule_is_asked_about_the_file_and_the_caller(self):
         """
-        CASE: the permission consulted is the one on `of_object`, not on the
-        file.
+        CASE: what the gate hands to the rule.
 
-        This is the whole point:  RepresentationFile is in
-        access.modifiables, which grants every user view/modify/delete on it,
-        so a gate on the file itself would authorize everybody.
+        It needs the file -- may_fetch_file() resolves of_object itself --
+        and the *caller*.  Asking about anyone else is how the first version
+        of this went wrong:  it consulted get_perms() on the Model, which
+        answers for the creator and for admins and for nobody else, so the
+        file reached no other member of the project.
         """
         download_chunk = self.rpcs['vger.download_chunk']
-        model = FakeObj(oid='model-9', id='the-model')
-        rf = self.rep_file(size=9, of_object=model)
+        rf = self.rep_file(size=9)
         self.vault_write(rf, b'aaabbbccc')
         asked = []
-        def fake_perms(obj, user=None, **kw):
-            asked.append(getattr(obj, 'id', None))
-            return ['view']
+        def fake_rule(rep_file, user):
+            asked.append((getattr(rep_file, 'oid', None),
+                          getattr(user, 'id', None)))
+            return True
         with mock.patch.object(vger, 'orb', self.fake_orb({'rf-1': rf})), \
-                mock.patch.object(vger, 'get_perms', fake_perms):
+                mock.patch.object(vger, 'may_fetch_file', fake_rule):
             download_chunk(digital_file_oid='rf-1', seq=0,
                            cb_details=self.caller)
-        self.assertEqual(['the-model'], asked)
-
-    def test_05d_a_file_representing_nothing_is_refused(self):
-        """
-        CASE: a file with no `of_object`.  It has no permissions to inherit,
-        and nothing in the application makes one -- so it is refused rather
-        than served to anyone who names it.
-        """
-        download_chunk = self.rpcs['vger.download_chunk']
-        rf = self.rep_file(size=9, of_object=False)
-        rf.of_object = None
-        self.vault_write(rf, b'aaabbbccc')
-        with mock.patch.object(vger, 'orb', self.fake_orb({'rf-1': rf})), \
-                self.allowing():
-            self.assertRaises(vger.ApplicationError, download_chunk,
-                              digital_file_oid='rf-1', seq=0,
-                              cb_details=self.caller)
+        self.assertEqual([('rf-1', 'zaphod')], asked)
 
     # ---- missing_vault_files ---------------------------------------------
 

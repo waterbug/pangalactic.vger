@@ -74,6 +74,7 @@ from pangalactic.core                  import (config, deleted, state,
                                                read_deleted, write_deleted,
                                                write_state)
 from pangalactic.core.access           import (get_owner_id, get_perms,
+                                               may_fetch_file,
                                                is_offline_excluded,
                                                is_cloaked, is_global_admin,
                                                modifiables)
@@ -981,19 +982,12 @@ class RepositoryService(ApplicationSession):
             # which upload_chunk() does -- so an oid was sufficient to fetch
             # the bytes it named.
             #
-            # The permission that matters is the one on **what the file
-            # represents**, not on the file.  RepresentationFile is in
-            # access.modifiables, which grants every user view/modify/delete
-            # on it, so asking about the file itself would authorize
-            # everyone;  the same reasoning as add_component_file(), where
-            # "authorization is the model's, since that is what gains a
-            # file".
-            #
-            # Verified against the test project rather than reasoned:  a
-            # cloaked assembly's Model gives 'view' to a user with a role in
-            # the owning project and an empty list to one without, and a
-            # public model gives 'view' to anyone.  A global admin has view
-            # on everything.
+            # access.may_fetch_file() decides it, and the rule is the one
+            # that already decides who is *told* about the object:  you may
+            # fetch what you would have been sent.  Its docstring records why
+            # neither form of a get_perms() check works -- the first attempt
+            # here asked get_perms() about the Model and refused the file to
+            # every member of the owning project except its creator.
             # ----------------------------------------------------------
             userid = getattr(cb_details, 'caller_authid', '')
             user_obj = orb.select('Person', id=userid)
@@ -1003,18 +997,11 @@ class RepositoryService(ApplicationSession):
                                        'download not authorized')
             digital_file = orb.get(digital_file_oid)
             if digital_file:
-                subject = getattr(digital_file, 'of_object', None)
-                if subject is None:
-                    # a file that represents nothing has no permissions to
-                    # inherit, and nothing in the application makes one
-                    orb.log.error(f'  "{digital_file_oid}" belongs to no '
-                                  'object -- rejected.')
-                    raise ApplicationError('vger.error.not_authorized',
-                                           'download not authorized')
-                if 'view' not in get_perms(subject, user=user_obj):
-                    subj_id = getattr(subject, 'id', '?')
-                    orb.log.error(f'  "{userid}" may not view "{subj_id}"'
-                                  ' -- rejected.')
+                if not may_fetch_file(digital_file, user_obj):
+                    subject = getattr(digital_file, 'of_object', None)
+                    subj_id = getattr(subject, 'id', '[no object]')
+                    orb.log.error(f'  "{userid}" may not fetch the file of '
+                                  f'"{subj_id}" -- rejected.')
                     raise ApplicationError('vger.error.not_authorized',
                                            'download not authorized')
                 # NOTE: chunk_size could be set as a kwarg if necessary
