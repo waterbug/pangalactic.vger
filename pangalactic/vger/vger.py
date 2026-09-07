@@ -1212,8 +1212,47 @@ class RepositoryService(ApplicationSession):
             # everything else is unauthorized
             unauthorized = {oid:so for oid, so in sobjs_unique.items()
                             if oid not in authorized}
-            unauth_ids += [unauthorized[oid].get('id', 'no id')
-                           for oid in unauthorized]
+            # ----------------------------------------------------------------
+            # An object that carries no change is not an attempt to modify
+            # anything, so there is nothing to authorize and nothing to
+            # refuse.
+            #
+            # A batch carries more than the object that was edited:  a client
+            # serializing a modified Product uses include_components=True, so
+            # the assembly's whole white box travels with it -- every Acu and
+            # every component, exactly as the repository already holds them.
+            # Asking whether the caller may modify those is asking the wrong
+            # question about the wrong objects.  Whatever the answer, nobody
+            # proposed to change them.
+            #
+            # Answering it anyway made a no-op look like a permissions
+            # failure:  dropping one component onto a subsystem warned the
+            # user that the subsystem's *existing* components had not been
+            # saved -- work of theirs that had never been at risk, and did
+            # not include the component they had just added, which was
+            # accepted (author, observed on FireSat, 2026-09-05).
+            #
+            # "Refused" now means "your change was rejected".  An object that
+            # IS changed, or that is new, is the caller's work and is
+            # reported exactly as before.
+            # ----------------------------------------------------------------
+            unchanged_ids = []
+            for oid, so in unauthorized.items():
+                obj_in_repo = orb.get(oid)
+                so_datetime = uncook_datetime(so.get('mod_datetime'))
+                carries_change = (obj_in_repo is None or not so_datetime or
+                                  earlier(obj_in_repo.mod_datetime,
+                                          so_datetime))
+                if carries_change:
+                    unauth_ids.append(so.get('id') or 'no id')
+                else:
+                    unchanged_ids.append(so.get('id') or 'no id')
+            if unchanged_ids:
+                n = len(unchanged_ids)
+                orb.log.info(f'  {n} object(s) carried no change; nothing '
+                             'to authorize and nothing to report:')
+                for obj_id in unchanged_ids:
+                    orb.log.debug(f'    - {obj_id}')
             if not authorized:
                 orb.log.info(f'  no save: {len(unauthorized)} unauthorized')
                 return dict(new_obj_dts={}, mod_obj_dts={}, unauth=unauth_ids,
