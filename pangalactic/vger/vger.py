@@ -1504,10 +1504,31 @@ class RepositoryService(ApplicationSession):
                 for oid, obj in auth_dels.items():
                     # add oids of objects to be deleted to the 'deleted' cache
                     deleted[oid] = obj.id
-                write_deleted(os.path.join(orb.home, 'deleted'))
-            oids_deleted = list(auth_dels.keys())
+            asked_for = list(auth_dels.keys())
             objs_to_delete = list(auth_dels.values())
-            orb.delete(objs_to_delete)
+            # ----------------------------------------------------------------
+            # A deletion cascades:  a Product takes its Models, their
+            # RepresentationFiles, the bytes of those, and any document
+            # reference that pointed at it.  orb.delete() says what it
+            # actually removed, and all of it is treated as deleted -- not
+            # only what the caller named.
+            #
+            # Both halves matter.  Publishing only the named oid left every
+            # other client holding a Model of a product that no longer
+            # exists, with a file record nobody may fetch;  and recording
+            # only the named oid in the "deleted" cache left the door open
+            # for one of those clients to push the Model back, since
+            # vger.save() refuses an oid only if the cache names it.
+            # ----------------------------------------------------------------
+            oids_deleted = orb.delete(objs_to_delete) or asked_for
+            cascaded = [oid for oid in oids_deleted if oid not in auth_dels]
+            if cascaded:
+                n = len(cascaded)
+                orb.log.info(f'  {n} object(s) went with them: {cascaded}')
+                for oid in cascaded:
+                    deleted[oid] = oid
+            if auth_dels or cascaded:
+                write_deleted(os.path.join(orb.home, 'deleted'))
             for oid in oids_deleted:
                 orb.log.info('   publishing "deleted" msg to public channel.')
                 channel = 'vger.channel.public'
