@@ -3,7 +3,7 @@ package:
   version: "4.4.dev5"
 
 source:
-        path: {{path-to-source}}
+        path: /home/waterbug/clones/pangalactic.vger
 
 requirements:
   build:
@@ -14,20 +14,19 @@ requirements:
     - autobahn
     - base58
     - ecdsa
+    - openldap
     - pangalactic.core >=4.4.dev5
     - postgresql
-    - psycopg2
+    # NOTE: psycopg == psycopg 3 (better than psycopg2!)
+    - psycopg
+    # - psycopg2
     # pynacl is needed for autobahn to support cryptosign auth
     - pynacl
     - pyopenssl >=22.1.0
     - python {{PY_VER}}
+    - python-ldap
     - scipy
     - twisted
-    # NOTE: LDAP support (pangalactic.vger.userdir) is optional -- it is only
-    # needed by deployments whose user identities come from an LDAP personnel
-    # directory.  For those, add to this environment:
-    #     - openldap
-    #     - python-ldap
 
 about:
   # home: https://pangalactic.us
